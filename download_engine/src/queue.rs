@@ -5,7 +5,7 @@ use reqwest::Client;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
-use crate::{download, DownloadOptions, ProgressCallback};
+use crate::{download, DownloadOptions, DownloadOutcome, ProgressCallback};
 
 #[derive(Debug, Clone)]
 pub struct QueueOptions {
@@ -24,7 +24,12 @@ pub type QueueProgressCallback = Arc<dyn Fn(usize, u64, u64) + Send + Sync>;
 
 /// Runs a batch of downloads with at most `concurrency` active at once.
 /// Returns one result per job, in the same order the jobs were given.
-pub async fn run_queue(client: &Client, jobs: Vec<DownloadOptions>, queue_opts: QueueOptions, on_progress: QueueProgressCallback) -> Vec<Result<()>> {
+pub async fn run_queue(
+    client: &Client,
+    jobs: Vec<DownloadOptions>,
+    queue_opts: QueueOptions,
+    on_progress: QueueProgressCallback,
+) -> Vec<Result<DownloadOutcome>> {
     let semaphore = Arc::new(Semaphore::new(queue_opts.concurrency.max(1)));
     let num_jobs = jobs.len();
     let mut tasks = JoinSet::new();
@@ -42,7 +47,7 @@ pub async fn run_queue(client: &Client, jobs: Vec<DownloadOptions>, queue_opts: 
         });
     }
 
-    let mut results: Vec<Option<Result<()>>> = (0..num_jobs).map(|_| None).collect();
+    let mut results: Vec<Option<Result<DownloadOutcome>>> = (0..num_jobs).map(|_| None).collect();
     while let Some(joined) = tasks.join_next().await {
         match joined {
             Ok((index, result)) => results[index] = Some(result),

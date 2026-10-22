@@ -1,243 +1,789 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { open } from "@tauri-apps/plugin-dialog";
 import "./App.css";
+import { SPEED_LIMIT_OPTIONS } from "./types";
+import type { AppSettings, FileCategory, Job, JobResult, JobStatus, NewJobInput, ResumeInfo } from "./types";
+import { calculateEta, detectCategory, formatBytes, nameFromUrl, progressPercent } from "./lib/format";
+import { loadState, saveState } from "./lib/persistence";
+import NewDownloadModal from "./components/NewDownloadModal";
+import SettingsModal from "./components/SettingsModal";
+import InspectorDrawer from "./components/InspectorDrawer";
 
-type DownloadProgress = {
-  downloaded: number;
-  total: number;
+const appWindow = getCurrentWindow();
+
+const DEFAULT_SETTINGS: AppSettings = {
+  defaultSegments: 8,
+  defaultLimit: "",
+  defaultOutputDir: "",
+  concurrency: 1,
+  maxRetries: 5,
+  userAgent: "",
 };
 
-type QueueProgress = {
-  index: number;
-  downloaded: number;
-  total: number;
-};
+const STATUS_FILTERS: { key: "all" | JobStatus; label: string; icon: string }[] = [
+  { key: "all", label: "All Downloads", icon: "fa-solid fa-list-ul" },
+  { key: "downloading", label: "Downloading", icon: "fa-solid fa-arrow-down-long text-emerald-500" },
+  { key: "queued", label: "Queued", icon: "fa-solid fa-clock text-amber-500" },
+  { key: "paused", label: "Paused", icon: "fa-solid fa-pause text-blue-400" },
+  { key: "interrupted", label: "Interrupted", icon: "fa-solid fa-plug-circle-xmark text-orange-500" },
+  { key: "completed", label: "Completed", icon: "fa-solid fa-circle-check text-green-500" },
+  { key: "cancelled", label: "Cancelled", icon: "fa-solid fa-ban text-gray-400" },
+  { key: "error", label: "Failed", icon: "fa-solid fa-circle-exclamation text-red-500" },
+];
 
-type QueueJobResult = {
-  url: string;
-  output: string;
-  error: string | null;
-};
+const CATEGORY_FILTERS: { key: "all" | FileCategory; label: string; icon: string }[] = [
+  { key: "all", label: "All Types", icon: "fa-solid fa-folder" },
+  { key: "compressed", label: "Compressed (.zip, .rar)", icon: "fa-solid fa-file-zipper text-amber-500" },
+  { key: "documents", label: "Documents", icon: "fa-solid fa-file-pdf text-red-500" },
+  { key: "video", label: "Videos & Media", icon: "fa-solid fa-film text-purple-500" },
+  { key: "programs", label: "Executables / Apps", icon: "fa-solid fa-box text-blue-500" },
+];
 
-type Status = "idle" | "downloading" | "done" | "error";
+const ACTIVE_STATUSES: JobStatus[] = ["downloading", "paused"];
 
-function formatBytes(bytes: number): string {
-  if (bytes <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  return `${(bytes / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+/** Longest a change may sit unsaved while downloads keep firing progress events. */
+const SAVE_INTERVAL_MS = 3000;
+/** Quiet period after the last change before saving, when nothing is running. */
+const SAVE_DEBOUNCE_MS = 600;
+
+function fileIcon(category: FileCategory): string {
+  switch (category) {
+    case "compressed":
+      return "fa-solid fa-file-zipper text-amber-500";
+    case "documents":
+      return "fa-solid fa-file-pdf text-red-500";
+    case "video":
+      return "fa-solid fa-file-video text-purple-500";
+    case "programs":
+      return "fa-solid fa-box text-blue-500";
+    default:
+      return "fa-solid fa-file text-gray-400";
+  }
 }
 
-function parseUrls(text: string): string[] {
-  return text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
+function progressBarClass(status: JobStatus): string {
+  switch (status) {
+    case "error":
+      return "bg-red-500";
+    case "completed":
+      return "bg-emerald-500";
+    case "paused":
+      return "bg-amber-400";
+    case "interrupted":
+      return "bg-orange-400";
+    case "cancelled":
+      return "bg-gray-400";
+    default:
+      return "bg-brand-500";
+  }
+}
+
+function statusBadge(job: Job) {
+  const badge = "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium border";
+  switch (job.status) {
+    case "downloading":
+      return (
+        <span className={`${badge} bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20`}>
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          Downloading
+        </span>
+      );
+    case "paused":
+      return (
+        <span className={`${badge} bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20`}>
+          <i className="fa-solid fa-pause text-[9px]" />
+          Paused
+        </span>
+      );
+    case "queued":
+      return (
+        <span className={`${badge} bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20`}>
+          <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+          Queued
+        </span>
+      );
+    case "completed":
+      return (
+        <span className={`${badge} bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20`}>
+          <i className="fa-solid fa-check text-[9px]" />
+          Completed
+        </span>
+      );
+    case "cancelled":
+      return (
+        <span className={`${badge} bg-gray-500/10 text-gray-500 dark:text-gray-400 border-gray-500/20`}>
+          <i className="fa-solid fa-ban text-[9px]" />
+          Cancelled
+        </span>
+      );
+    case "interrupted":
+      return (
+        <span
+          className={`${badge} bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20`}
+          title="App ditutup saat download berjalan — bisa dilanjutkan dari posisi terakhir"
+        >
+          <i className="fa-solid fa-plug-circle-xmark text-[9px]" />
+          Interrupted
+        </span>
+      );
+    case "error":
+      return (
+        <span className={`${badge} bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20`}>
+          <i className="fa-solid fa-triangle-exclamation text-[9px]" />
+          Failed
+        </span>
+      );
+  }
 }
 
 function App() {
-  const [urlsText, setUrlsText] = useState("");
-  const [output, setOutput] = useState("");
-  const [segments, setSegments] = useState("8");
-  const [limit, setLimit] = useState("");
-  const [concurrency, setConcurrency] = useState("1");
+  const [dark, setDark] = useState(true);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [globalLimit, setGlobalLimit] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | JobStatus>("all");
+  const [categoryFilter, setCategoryFilter] = useState<"all" | FileCategory>("all");
+  const [search, setSearch] = useState("");
+  const [inspectedId, setInspectedId] = useState<string | null>(null);
+  const [newDownloadOpen, setNewDownloadOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-
-  const [status, setStatus] = useState<Status>("idle");
-  const [singleProgress, setSingleProgress] = useState<DownloadProgress>({ downloaded: 0, total: 0 });
-  const [queueProgress, setQueueProgress] = useState<Record<number, DownloadProgress>>({});
-  const [queueResults, setQueueResults] = useState<QueueJobResult[] | null>(null);
-  const [message, setMessage] = useState("");
-  const startedAt = useRef<number>(0);
-
-  const urls = parseUrls(urlsText);
-  const isQueue = urls.length > 1;
+  const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
+  const startingRef = useRef<Set<string>>(new Set());
+  const [restored, setRestored] = useState(false);
 
   useEffect(() => {
-    const unlistenSingle = listen<DownloadProgress>("download-progress", (event) => {
-      setSingleProgress(event.payload);
-    });
-    const unlistenQueue = listen<QueueProgress>("queue-progress", (event) => {
-      const { index, downloaded, total } = event.payload;
-      setQueueProgress((prev) => ({ ...prev, [index]: { downloaded, total } }));
-    });
+    document.documentElement.classList.toggle("dark", dark);
+  }, [dark]);
+
+  // Pull the last session back in before anything else touches state.
+  useEffect(() => {
+    let active = true;
+    loadState()
+      .then((saved) => {
+        if (!active || !saved) return;
+        if (typeof saved.dark === "boolean") setDark(saved.dark);
+        if (saved.settings) setSettings({ ...DEFAULT_SETTINGS, ...saved.settings });
+        if (typeof saved.globalLimit === "string") setGlobalLimit(saved.globalLimit);
+        if (saved.jobs) setJobs(saved.jobs);
+      })
+      .finally(() => {
+        if (active) setRestored(true);
+      });
     return () => {
-      unlistenSingle.then((fn) => fn());
-      unlistenQueue.then((fn) => fn());
+      active = false;
     };
   }, []);
 
-  async function handleDownload(e: React.FormEvent) {
-    e.preventDefault();
-    if (urls.length === 0) return;
+  // Save on change, but throttled rather than purely debounced: progress events
+  // arrive several times a second, and a plain debounce would keep resetting
+  // its own timer so nothing ever hit the disk while a download was running.
+  const lastSaveRef = useRef(0);
+  useEffect(() => {
+    if (!restored) return;
+    const sinceLastSave = Date.now() - lastSaveRef.current;
+    const delay = sinceLastSave > SAVE_INTERVAL_MS ? 0 : SAVE_DEBOUNCE_MS;
+    const timer = window.setTimeout(() => {
+      lastSaveRef.current = Date.now();
+      saveState({ dark, globalLimit, settings, jobs });
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [restored, dark, globalLimit, settings, jobs]);
 
-    setStatus("downloading");
-    setMessage("");
-    setSingleProgress({ downloaded: 0, total: 0 });
-    setQueueProgress({});
-    setQueueResults(null);
-    startedAt.current = Date.now();
+  // A restored limit lives only in the UI until the engine is told about it.
+  useEffect(() => {
+    if (!restored || !globalLimit) return;
+    invoke("set_global_speed_limit", { limit: globalLimit }).catch(() => {});
+  }, [restored, globalLimit]);
 
-    try {
-      if (isQueue) {
-        const results = await invoke<QueueJobResult[]>("start_queue", {
-          urls,
-          segments: Number(segments) || 8,
-          limit: limit.trim() || null,
-          concurrency: Number(concurrency) || 1,
+  // The engine builds its HTTP client per call, so it needs the current UA.
+  useEffect(() => {
+    invoke("set_user_agent", { userAgent: settings.userAgent || null }).catch(() => {});
+  }, [settings.userAgent]);
+
+  // Progress events, tagged per job id.
+  useEffect(() => {
+    const unlisten = listen<{ job_id: string; downloaded: number; total: number }>("job-progress", (event) => {
+      const { job_id, downloaded, total } = event.payload;
+      setJobs((prev) =>
+        prev.map((j) => {
+          if (j.id !== job_id) return j;
+          const now = Date.now();
+          let speedBytes = j.speedBytes;
+          let lastTick = j.lastTick;
+          if (j.lastTick) {
+            const dt = (now - j.lastTick.time) / 1000;
+            if (dt > 0.2) {
+              speedBytes = Math.max(0, (downloaded - j.lastTick.downloaded) / dt);
+              lastTick = { time: now, downloaded };
+            }
+          } else {
+            lastTick = { time: now, downloaded };
+          }
+          return { ...j, downloadedBytes: downloaded, sizeBytes: total || j.sizeBytes, speedBytes, lastTick };
+        }),
+      );
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  const beginJob = useCallback(
+    async (job: Job) => {
+      setJobs((prev) => prev.map((j) => (j.id === job.id ? { ...j, status: "downloading", error: null, lastTick: null, speedBytes: 0 } : j)));
+      try {
+        const result = await invoke<JobResult>("start_download", {
+          jobId: job.id,
+          url: job.url,
+          output: job.outputPath || null,
+          segments: job.segments,
+          limit: job.limit || null,
+          retries: settings.maxRetries,
         });
-        setQueueResults(results);
-        const failed = results.filter((r) => r.error);
-        setStatus(failed.length > 0 ? "error" : "done");
-        setMessage(failed.length > 0 ? `${failed.length} dari ${results.length} file gagal` : `${results.length} file selesai didownload`);
-      } else {
-        const savedPath = await invoke<string>("start_download", {
-          url: urls[0],
-          output: output.trim() || null,
-          segments: Number(segments) || 8,
-          limit: limit.trim() || null,
-        });
-        setStatus("done");
-        setMessage(`Tersimpan di ${savedPath}`);
+        setJobs((prev) =>
+          prev.map((j) => {
+            if (j.id !== job.id) return j;
+            if (result.status === "cancelled") {
+              return { ...j, status: "cancelled", speedBytes: 0 };
+            }
+            return { ...j, status: "completed", outputPath: result.path, downloadedBytes: j.sizeBytes || j.downloadedBytes, speedBytes: 0 };
+          }),
+        );
+      } catch (err) {
+        setJobs((prev) => prev.map((j) => (j.id === job.id ? { ...j, status: "error", error: String(err), speedBytes: 0 } : j)));
+      } finally {
+        startingRef.current.delete(job.id);
       }
-    } catch (err) {
-      setStatus("error");
-      setMessage(String(err));
+    },
+    [settings.maxRetries],
+  );
+
+  // Scheduler: whenever a concurrency slot is free, start the next queued job.
+  // Paused jobs still hold their slot, since their connection is only parked.
+  useEffect(() => {
+    const activeCount = jobs.filter((j) => ACTIVE_STATUSES.includes(j.status)).length;
+    if (activeCount >= settings.concurrency) return;
+    const next = jobs.find((j) => j.status === "queued" && !startingRef.current.has(j.id));
+    if (!next) return;
+    startingRef.current.add(next.id);
+    beginJob(next);
+  }, [jobs, settings.concurrency, beginJob]);
+
+  async function probeUrlFor(id: string, url: string) {
+    try {
+      const result = await invoke<{ total_size: number; supports_range: boolean }>("probe_url", { url });
+      setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, sizeBytes: result.total_size || j.sizeBytes, supportsRange: result.supports_range } : j)));
+    } catch {
+      setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, supportsRange: false } : j)));
     }
   }
 
-  const percent = singleProgress.total > 0 ? Math.min(100, (singleProgress.downloaded / singleProgress.total) * 100) : 0;
-  const elapsedSec = (Date.now() - startedAt.current) / 1000;
-  const speed = status === "downloading" && elapsedSec > 0 ? singleProgress.downloaded / elapsedSec : 0;
+  function handleCreateJob(input: NewJobInput) {
+    const id = crypto.randomUUID();
+    const name = nameFromUrl(input.url);
+    const outputDir = input.outputPath || settings.defaultOutputDir;
+    const outputPath = outputDir ? `${outputDir.replace(/[\\/]+$/, "")}\\${name}` : "";
+    const baseJob: Job = {
+      id,
+      url: input.url,
+      name,
+      outputPath,
+      sizeBytes: 0,
+      downloadedBytes: 0,
+      speedBytes: 0,
+      segments: input.segments,
+      limit: input.limit,
+      status: "queued",
+      category: detectCategory(name),
+      supportsRange: null,
+      error: null,
+      createdAt: Date.now(),
+      lastTick: null,
+    };
+
+    const addAndMaybeStart = () => {
+      setJobs((prev) => [baseJob, ...prev]);
+      probeUrlFor(baseJob.id, baseJob.url);
+      if (input.forceStart) {
+        startingRef.current.add(baseJob.id);
+        beginJob(baseJob);
+      }
+    };
+
+    if (input.startInSec > 0) {
+      window.setTimeout(addAndMaybeStart, input.startInSec * 1000);
+    } else {
+      addAndMaybeStart();
+    }
+  }
+
+  async function pauseJob(id: string) {
+    try {
+      await invoke("pause_download", { jobId: id });
+      setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, status: "paused", speedBytes: 0, lastTick: null } : j)));
+    } catch (err) {
+      setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, error: String(err) } : j)));
+    }
+  }
+
+  async function resumeJob(id: string) {
+    try {
+      await invoke("resume_download", { jobId: id });
+      setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, status: "downloading", lastTick: null } : j)));
+    } catch (err) {
+      setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, error: String(err) } : j)));
+    }
+  }
+
+  async function cancelJob(id: string) {
+    // The command resolves as soon as the signal lands; `start_download` then
+    // settles the job as cancelled once the segments actually wind down.
+    await invoke("cancel_download", { jobId: id }).catch(() => {});
+  }
+
+  /**
+   * Re-queues a stopped job. The engine picks up a matching partial file on
+   * its own, so this only has to get the UI's numbers right: ask what's
+   * already on disk rather than blanking the bar and letting it snap back.
+   */
+  async function retryJob(id: string) {
+    const job = jobs.find((j) => j.id === id);
+    if (!job) return;
+
+    const resumable = job.outputPath
+      ? await invoke<ResumeInfo | null>("resume_info", { output: job.outputPath }).catch(() => null)
+      : null;
+
+    setJobs((prev) =>
+      prev.map((j) =>
+        j.id === id
+          ? {
+              ...j,
+              status: "queued",
+              error: null,
+              downloadedBytes: resumable?.downloaded ?? 0,
+              sizeBytes: resumable?.total ?? j.sizeBytes,
+              speedBytes: 0,
+              lastTick: null,
+            }
+          : j,
+      ),
+    );
+  }
+
+  function startAllQueued() {
+    jobs
+      .filter((j) => j.status === "queued")
+      .forEach((j) => {
+        if (!startingRef.current.has(j.id)) {
+          startingRef.current.add(j.id);
+          beginJob(j);
+        }
+      });
+  }
+
+  function pauseAllRunning() {
+    jobs.filter((j) => j.status === "downloading").forEach((j) => pauseJob(j.id));
+  }
+
+  async function removeJob(id: string) {
+    const job = jobs.find((j) => j.id === id);
+    if (job && ACTIVE_STATUSES.includes(job.status)) {
+      await cancelJob(id);
+    }
+    // A half-finished file is unusable on its own, so it goes with the job.
+    // A completed one is the user's file and stays put.
+    if (job && job.status !== "completed" && job.outputPath) {
+      await invoke("discard_download", { output: job.outputPath }).catch(() => {});
+    }
+    setJobs((prev) => prev.filter((j) => j.id !== id));
+    if (inspectedId === id) setInspectedId(null);
+  }
+
+  async function applyGlobalLimit(limit: string) {
+    setGlobalLimit(limit);
+    setSpeedMenuOpen(false);
+    await invoke("set_global_speed_limit", { limit: limit || null }).catch(() => {});
+  }
+
+  async function browsePath(): Promise<string | null> {
+    const selected = await open({ directory: true, multiple: false });
+    return typeof selected === "string" ? selected : null;
+  }
+
+  /** Flushes pending changes, since closing kills the throttled save. */
+  async function closeWindow() {
+    if (restored) await saveState({ dark, globalLimit, settings, jobs });
+    await appWindow.close();
+  }
+
+  const filteredJobs = useMemo(() => {
+    const q = search.toLowerCase();
+    return jobs.filter((j) => {
+      const matchStatus = statusFilter === "all" || j.status === statusFilter;
+      const matchCategory = categoryFilter === "all" || j.category === categoryFilter;
+      const matchSearch = !q || j.name.toLowerCase().includes(q) || j.url.toLowerCase().includes(q);
+      return matchStatus && matchCategory && matchSearch;
+    });
+  }, [jobs, statusFilter, categoryFilter, search]);
+
+  const counts = useMemo(
+    () => ({
+      all: jobs.length,
+      downloading: jobs.filter((j) => j.status === "downloading").length,
+      queued: jobs.filter((j) => j.status === "queued").length,
+      paused: jobs.filter((j) => j.status === "paused").length,
+      interrupted: jobs.filter((j) => j.status === "interrupted").length,
+      completed: jobs.filter((j) => j.status === "completed").length,
+      cancelled: jobs.filter((j) => j.status === "cancelled").length,
+      error: jobs.filter((j) => j.status === "error").length,
+    }),
+    [jobs],
+  );
+
+  const totalSpeed = jobs.filter((j) => j.status === "downloading").reduce((acc, j) => acc + j.speedBytes, 0);
+  const activeThreads = jobs.filter((j) => j.status === "downloading").reduce((acc, j) => acc + j.segments, 0);
+  const inspectedJob = jobs.find((j) => j.id === inspectedId) ?? null;
+  const activeCount = counts.downloading + counts.paused;
+  const globalLimitLabel = SPEED_LIMIT_OPTIONS.find((o) => o.value === globalLimit)?.label ?? globalLimit;
 
   return (
-    <main className="container">
-      <div className="header-row">
-        <div>
-          <h1>Download Engine</h1>
-          <p className="subtitle">Segmented downloader — multi-connection, bandwidth limiter, auto-retry</p>
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-gray-100 dark:bg-darkbg-900 text-gray-800 dark:text-gray-100 text-sm">
+      {/* Title Bar */}
+      <div
+        data-tauri-drag-region
+        className="bg-gray-200 dark:bg-darkbg-800 text-gray-700 dark:text-gray-300 px-3 py-1.5 flex items-center justify-between border-b border-gray-300 dark:border-gray-700/60 select-none text-xs"
+      >
+        <div className="flex items-center space-x-2 pointer-events-none">
+          <div className="bg-brand-600 text-white p-1 rounded-md text-xs font-bold leading-none">
+            <i className="fa-solid fa-bolt" />
+          </div>
+          <span className="font-semibold tracking-wide text-gray-900 dark:text-gray-100">Download Engine</span>
+          <span className="text-[10px] bg-brand-500/10 text-brand-600 dark:text-brand-400 px-1.5 py-0.5 rounded border border-brand-500/20 font-mono">v0.1.0 (Rust Core)</span>
         </div>
-        <button type="button" className="settings-toggle" onClick={() => setSettingsOpen((v) => !v)} aria-label="Pengaturan">
-          ⚙ Pengaturan
-        </button>
+        <div className="flex items-center space-x-3">
+          <button onClick={() => setDark((v) => !v)} className="text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white transition" title="Toggle Theme">
+            <i className={dark ? "fa-solid fa-sun text-amber-400" : "fa-solid fa-moon"} />
+          </button>
+          <div className="h-3 w-[1px] bg-gray-300 dark:bg-gray-700" />
+          <button onClick={() => appWindow.minimize()} className="hover:bg-gray-300 dark:hover:bg-gray-700 px-2 py-1 rounded transition text-gray-500 hover:text-gray-900 dark:hover:text-white">
+            <i className="fa-solid fa-minus" />
+          </button>
+          <button onClick={() => appWindow.toggleMaximize()} className="hover:bg-gray-300 dark:hover:bg-gray-700 px-2 py-1 rounded transition text-gray-500 hover:text-gray-900 dark:hover:text-white">
+            <i className="fa-regular fa-square" />
+          </button>
+          <button onClick={closeWindow} className="hover:bg-red-500 hover:text-white px-2 py-1 rounded transition text-gray-500">
+            <i className="fa-solid fa-xmark" />
+          </button>
+        </div>
       </div>
 
-      <form className="download-form" onSubmit={handleDownload}>
-        <div className="field">
-          <label htmlFor="url-input">URL File</label>
-          <textarea
-            id="url-input"
-            placeholder={"https://example.com/file.zip\n(satu URL per baris untuk download banyak file sekaligus)"}
-            value={urlsText}
-            onChange={(e) => setUrlsText(e.currentTarget.value)}
-            disabled={status === "downloading"}
-            rows={isQueue ? Math.min(urls.length + 1, 5) : 2}
-          />
+      {/* Toolbar */}
+      <div className="bg-white dark:bg-darkbg-800 border-b border-gray-200 dark:border-gray-700/80 px-4 py-2 flex flex-wrap items-center justify-between gap-2 shadow-sm">
+        <div className="flex items-center space-x-1.5">
+          <button
+            onClick={() => setNewDownloadOpen(true)}
+            className="bg-brand-600 hover:bg-brand-700 text-white font-medium px-3.5 py-1.5 rounded-lg flex items-center space-x-2 shadow-sm transition active:scale-95"
+          >
+            <i className="fa-solid fa-plus text-xs" />
+            <span>New Download</span>
+          </button>
+          <div className="h-5 w-[1px] bg-gray-200 dark:bg-gray-700 mx-1" />
+          <button
+            onClick={startAllQueued}
+            disabled={counts.queued === 0}
+            className="hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-emerald-600 dark:text-emerald-400 p-1.5 px-2.5 rounded-md flex items-center space-x-1.5 transition font-medium text-xs"
+          >
+            <i className="fa-solid fa-play" />
+            <span>Start All Queued</span>
+          </button>
+          <button
+            onClick={pauseAllRunning}
+            disabled={counts.downloading === 0}
+            className="hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-amber-600 dark:text-amber-400 p-1.5 px-2.5 rounded-md flex items-center space-x-1.5 transition font-medium text-xs"
+          >
+            <i className="fa-solid fa-pause" />
+            <span>Pause All</span>
+          </button>
+
+          <div className="h-5 w-[1px] bg-gray-200 dark:bg-gray-700 mx-1" />
+
+          <div className="relative">
+            <button
+              onClick={() => setSpeedMenuOpen((v) => !v)}
+              className="hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 p-1.5 px-2.5 rounded-md flex items-center space-x-1.5 transition text-xs"
+            >
+              <i className="fa-solid fa-gauge-high text-brand-500" />
+              <span>Speed Limit: {globalLimit ? globalLimitLabel : "Off"}</span>
+            </button>
+            {speedMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setSpeedMenuOpen(false)} />
+                <div className="absolute left-0 mt-1 z-20 w-44 bg-white dark:bg-darkbg-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl py-1">
+                  <div className="px-3 py-1.5 text-[10px] text-gray-400 border-b border-gray-100 dark:border-gray-700/60">Cap across all downloads</div>
+                  {SPEED_LIMIT_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => applyGlobalLimit(opt.value)}
+                      className={`w-full text-left px-3 py-1.5 text-xs transition hover:bg-gray-100 dark:hover:bg-darkbg-700/60 ${
+                        globalLimit === opt.value ? "text-brand-600 dark:text-brand-400 font-medium" : "text-gray-700 dark:text-gray-300"
+                      }`}
+                    >
+                      {globalLimit === opt.value && <i className="fa-solid fa-check mr-1.5 text-[10px]" />}
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
-        {settingsOpen && (
-          <div className="settings-panel">
-            <div className="field">
-              <label htmlFor="output-input">Output Path {isQueue && <span className="hint">(diabaikan untuk banyak file, nama otomatis dari URL)</span>}</label>
-              <input
-                id="output-input"
-                type="text"
-                placeholder="Nama file otomatis dari URL kalau dikosongkan"
-                value={output}
-                onChange={(e) => setOutput(e.currentTarget.value)}
-                disabled={status === "downloading" || isQueue}
-              />
+        <div className="flex items-center space-x-2">
+          <div className="relative">
+            <i className="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-gray-400 text-xs" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.currentTarget.value)}
+              placeholder="Search downloads..."
+              className="bg-gray-100 dark:bg-darkbg-900 text-xs text-gray-800 dark:text-gray-200 pl-8 pr-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-1 focus:ring-brand-500 w-48 sm:w-64 transition"
+            />
+          </div>
+          <button onClick={() => setSettingsOpen(true)} className="hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 p-2 rounded-lg transition" title="Settings">
+            <i className="fa-solid fa-gear" />
+          </button>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar */}
+        <aside className="w-60 bg-gray-50 dark:bg-darkbg-800/60 border-r border-gray-200 dark:border-gray-700/80 p-3 flex flex-col justify-between select-none overflow-y-auto">
+          <div className="space-y-4">
+            <div>
+              <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider px-2 mb-1.5">Status</div>
+              <nav className="space-y-0.5">
+                {STATUS_FILTERS.map((f) => (
+                  <button
+                    key={f.key}
+                    onClick={() => setStatusFilter(f.key)}
+                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition ${
+                      statusFilter === f.key ? "bg-brand-500/10 text-brand-600 dark:text-brand-400" : "text-gray-600 dark:text-gray-300 hover:bg-gray-200/60 dark:hover:bg-darkbg-700/50"
+                    }`}
+                  >
+                    <span className="flex items-center space-x-2">
+                      <i className={`${f.icon} w-4`} />
+                      <span>{f.label}</span>
+                    </span>
+                    <span className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded-full text-[10px]">{counts[f.key]}</span>
+                  </button>
+                ))}
+              </nav>
             </div>
 
-            <div className="settings-grid">
-              <div className="field">
-                <label htmlFor="segments-input">Jumlah Segmen</label>
-                <input
-                  id="segments-input"
-                  type="number"
-                  min={1}
-                  max={32}
-                  value={segments}
-                  onChange={(e) => setSegments(e.currentTarget.value)}
-                  disabled={status === "downloading"}
-                />
-                <span className="hint">Jumlah koneksi paralel per file (default 8)</span>
-              </div>
+            <div>
+              <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider px-2 mb-1.5">Categories</div>
+              <nav className="space-y-0.5">
+                {CATEGORY_FILTERS.map((f) => (
+                  <button
+                    key={f.key}
+                    onClick={() => setCategoryFilter(f.key)}
+                    className={`w-full flex items-center space-x-2 px-2.5 py-1.5 rounded-lg text-xs transition ${
+                      categoryFilter === f.key ? "text-brand-600 dark:text-brand-400 font-medium bg-brand-500/10" : "text-gray-600 dark:text-gray-300 hover:bg-gray-200/60 dark:hover:bg-darkbg-700/50"
+                    }`}
+                  >
+                    <i className={`${f.icon} w-4`} />
+                    <span>{f.label}</span>
+                  </button>
+                ))}
+              </nav>
+            </div>
+          </div>
 
-              <div className="field">
-                <label htmlFor="limit-input">Batas Bandwidth</label>
-                <input
-                  id="limit-input"
-                  type="text"
-                  placeholder="cth. 2MB, 500KB"
-                  value={limit}
-                  onChange={(e) => setLimit(e.currentTarget.value)}
-                  disabled={status === "downloading"}
-                />
-                <span className="hint">Kosongkan untuk tanpa batas</span>
+          <div className="bg-white dark:bg-darkbg-800 p-3 rounded-xl border border-gray-200 dark:border-gray-700/70 shadow-sm space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-500 dark:text-gray-400 flex items-center gap-1.5 font-medium">
+                <i className="fa-solid fa-gauge-simple-high text-brand-500" /> Speed
+              </span>
+              <span className="font-mono font-bold text-brand-600 dark:text-brand-400">{formatBytes(totalSpeed)}/s</span>
+            </div>
+            <div className="w-full bg-gray-200 dark:bg-gray-700 h-1.5 rounded-full overflow-hidden">
+              <div className="bg-brand-500 h-full transition-all duration-300" style={{ width: `${Math.min(100, (totalSpeed / (10 * 1024 * 1024)) * 100)}%` }} />
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-gray-100 dark:border-gray-700/50 text-[11px]">
+              <div>
+                <div className="text-gray-400">Active Threads</div>
+                <div className="font-mono font-semibold text-gray-700 dark:text-gray-200">{activeThreads} Segments</div>
               </div>
-
-              <div className="field">
-                <label htmlFor="concurrency-input">Concurrency</label>
-                <input
-                  id="concurrency-input"
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={concurrency}
-                  onChange={(e) => setConcurrency(e.currentTarget.value)}
-                  disabled={status === "downloading" || !isQueue}
-                />
-                <span className="hint">Jumlah file didownload bersamaan (hanya berlaku untuk banyak file)</span>
+              <div>
+                <div className="text-gray-400">Concurrency</div>
+                <div className="font-mono font-semibold text-gray-700 dark:text-gray-200">
+                  {activeCount} / {settings.concurrency} Active
+                </div>
               </div>
             </div>
           </div>
-        )}
+        </aside>
 
-        <button type="submit" disabled={status === "downloading" || urls.length === 0}>
-          {status === "downloading" ? "Mengunduh..." : isQueue ? `Download ${urls.length} File` : "Download"}
-        </button>
-      </form>
-
-      {status !== "idle" && !isQueue && (
-        <div className="progress-section">
-          <div className="progress-bar">
-            <div className="progress-fill" style={{ width: `${percent}%` }} />
+        {/* Table */}
+        <main className="flex-1 flex flex-col bg-white dark:bg-darkbg-900 overflow-hidden relative">
+          <div className="flex-1 overflow-auto">
+            <table className="w-full text-left border-collapse">
+              <thead className="bg-gray-50 dark:bg-darkbg-800/80 sticky top-0 z-10 border-b border-gray-200 dark:border-gray-700/80 text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold select-none">
+                <tr>
+                  <th className="py-2.5 px-4">File Name</th>
+                  <th className="py-2.5 px-3 w-28">Size</th>
+                  <th className="py-2.5 px-3 w-32">Status</th>
+                  <th className="py-2.5 px-3 w-48">Progress</th>
+                  <th className="py-2.5 px-3 w-28 text-right">Speed</th>
+                  <th className="py-2.5 px-3 w-24 text-right">ETA</th>
+                  <th className="py-2.5 px-3 w-32 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800/60 text-xs">
+                {filteredJobs.map((job) => {
+                  const pct = progressPercent(job);
+                  const isActive = ACTIVE_STATUSES.includes(job.status);
+                  const canRetry = ["error", "cancelled", "completed", "interrupted"].includes(job.status);
+                  // A stopped job that got somewhere has bytes worth keeping;
+                  // a finished one has no partial file left to continue from.
+                  const canContinue = canRetry && job.status !== "completed" && job.downloadedBytes > 0;
+                  return (
+                    <tr
+                      key={job.id}
+                      onClick={() => setInspectedId(job.id)}
+                      className={`hover:bg-gray-50 dark:hover:bg-darkbg-800/50 transition cursor-pointer ${inspectedId === job.id ? "bg-brand-500/5 dark:bg-brand-500/10" : ""}`}
+                    >
+                      <td className="py-3 px-4">
+                        <div className="flex items-center space-x-3">
+                          <div className="p-2 rounded-lg bg-gray-100 dark:bg-darkbg-800 text-gray-500 dark:text-gray-400">
+                            <i className={`${fileIcon(job.category)} text-base`} />
+                          </div>
+                          <div className="max-w-xs truncate">
+                            <div className="font-semibold text-gray-800 dark:text-gray-100 truncate">{job.name}</div>
+                            <div className="text-[10px] text-gray-400 truncate font-mono">{job.url}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 px-3 font-mono text-gray-600 dark:text-gray-300">{job.sizeBytes > 0 ? formatBytes(job.sizeBytes) : "-"}</td>
+                      <td className="py-3 px-3">{statusBadge(job)}</td>
+                      <td className="py-3 px-3">
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-[10px] font-mono">
+                            <span>{pct}%</span>
+                            <span>
+                              {formatBytes(job.downloadedBytes)} / {job.sizeBytes > 0 ? formatBytes(job.sizeBytes) : "?"}
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-200 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full transition-all duration-300 ${progressBarClass(job.status)} ${job.status === "downloading" ? "chunk-active" : ""}`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono font-medium text-brand-600 dark:text-brand-400">{job.status === "downloading" ? `${formatBytes(job.speedBytes)}/s` : "-"}</td>
+                      <td className="py-3 px-3 text-right font-mono text-gray-500 dark:text-gray-400 text-[11px]">{calculateEta(job)}</td>
+                      <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-center space-x-1">
+                          {job.status === "downloading" && (
+                            <button onClick={() => pauseJob(job.id)} className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-amber-500" title="Pause">
+                              <i className="fa-solid fa-pause" />
+                            </button>
+                          )}
+                          {job.status === "paused" && (
+                            <button onClick={() => resumeJob(job.id)} className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-emerald-500" title="Resume">
+                              <i className="fa-solid fa-play" />
+                            </button>
+                          )}
+                          {isActive && (
+                            <button onClick={() => cancelJob(job.id)} className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-red-500" title="Cancel">
+                              <i className="fa-solid fa-stop" />
+                            </button>
+                          )}
+                          {canRetry && (
+                            <button
+                              onClick={() => retryJob(job.id)}
+                              className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-emerald-500"
+                              title={canContinue ? `Lanjutkan dari ${pct}%` : "Download ulang"}
+                            >
+                              <i className={canContinue ? "fa-solid fa-play" : "fa-solid fa-rotate-right"} />
+                            </button>
+                          )}
+                          <button onClick={() => setInspectedId(job.id)} className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-brand-500" title="Inspect">
+                            <i className="fa-solid fa-circle-info" />
+                          </button>
+                          <button
+                            onClick={() => removeJob(job.id)}
+                            className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-red-500"
+                            title={job.status === "completed" ? "Hapus dari daftar" : "Hapus dari daftar & buang file parsial"}
+                          >
+                            <i className="fa-solid fa-trash-can" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-          <div className="progress-stats">
-            <span>{percent.toFixed(1)}%</span>
-            <span>
-              {formatBytes(singleProgress.downloaded)} / {singleProgress.total > 0 ? formatBytes(singleProgress.total) : "?"}
-            </span>
-            {status === "downloading" && <span>{formatBytes(speed)}/s</span>}
-          </div>
-        </div>
-      )}
 
-      {status !== "idle" && isQueue && (
-        <div className="queue-list">
-          {urls.map((u, i) => {
-            const p = queueProgress[i] ?? { downloaded: 0, total: 0 };
-            const pct = p.total > 0 ? Math.min(100, (p.downloaded / p.total) * 100) : 0;
-            const result = queueResults?.[i];
-            return (
-              <div className="queue-item" key={i}>
-                <div className="queue-item-name">{u.split("/").pop() || u}</div>
-                <div className="progress-bar small">
-                  <div className={`progress-fill ${result?.error ? "error" : ""}`} style={{ width: `${result ? 100 : pct}%` }} />
-                </div>
-                <div className="queue-item-status">
-                  {result ? (result.error ? `Gagal: ${result.error}` : "Selesai") : `${pct.toFixed(0)}%`}
-                </div>
+          {filteredJobs.length === 0 && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-white/80 dark:bg-darkbg-900/80 backdrop-blur-sm">
+              <div className="w-16 h-16 bg-brand-500/10 text-brand-500 rounded-full flex items-center justify-center text-2xl mb-3">
+                <i className="fa-solid fa-cloud-arrow-down" />
               </div>
-            );
-          })}
-        </div>
+              <h3 className="font-semibold text-base text-gray-800 dark:text-gray-200">No downloads found</h3>
+              <p className="text-xs text-gray-500 max-w-sm mt-1">Start by adding a new download URL or tweaking your active filter criteria.</p>
+              <button onClick={() => setNewDownloadOpen(true)} className="mt-4 bg-brand-600 hover:bg-brand-700 text-white px-4 py-1.5 rounded-lg text-xs font-medium transition shadow">
+                <i className="fa-solid fa-plus mr-1" /> Add Download
+              </button>
+            </div>
+          )}
+
+          <div className="bg-gray-50 dark:bg-darkbg-800 border-t border-gray-200 dark:border-gray-700/80 px-4 py-1.5 text-xs text-gray-500 dark:text-gray-400 flex items-center justify-between select-none">
+            <div className="flex items-center space-x-4">
+              <span>
+                <i className="fa-solid fa-hard-drive mr-1" /> {jobs.length} items in queue
+              </span>
+              <span>
+                <i className="fa-solid fa-shield-halved text-emerald-500 mr-1" /> Range Request Probe: Active
+              </span>
+            </div>
+            <div className="flex items-center space-x-3 font-mono text-[11px]">
+              <span>Retries: {settings.maxRetries}</span>
+              <span>•</span>
+              <span>Disk Pre-allocation: Enabled</span>
+              <span>•</span>
+              <span>Engine Mode: Parallel Segmented</span>
+            </div>
+          </div>
+        </main>
+
+        {inspectedJob && <InspectorDrawer job={inspectedJob} onClose={() => setInspectedId(null)} />}
+      </div>
+
+      {newDownloadOpen && (
+        <NewDownloadModal
+          defaultSegments={settings.defaultSegments}
+          defaultLimit={settings.defaultLimit}
+          onClose={() => setNewDownloadOpen(false)}
+          onSubmit={(input) => {
+            handleCreateJob(input);
+            setNewDownloadOpen(false);
+          }}
+          onBrowse={browsePath}
+        />
       )}
 
-      {message && <p className={`message ${status}`}>{message}</p>}
-    </main>
+      {settingsOpen && <SettingsModal settings={settings} onClose={() => setSettingsOpen(false)} onSave={setSettings} onBrowse={browsePath} />}
+    </div>
   );
 }
 

@@ -4,9 +4,8 @@ use std::sync::Arc;
 use anyhow::{bail, Context, Result};
 use clap::Parser;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use reqwest::Client;
 
-use download_engine::{download, guess_filename, run_queue, DownloadOptions, QueueOptions};
+use download_engine::{build_client, download, guess_filename, run_queue, DownloadOptions, QueueOptions};
 
 /// Segmented, multi-connection downloader (IDM-style core engine).
 #[derive(Parser)]
@@ -34,6 +33,18 @@ struct Cli {
     /// Delay the whole queue by this many seconds before starting (simple scheduling)
     #[arg(long = "start-in")]
     start_in: Option<u64>,
+
+    /// How many times a segment may retry before the download fails
+    #[arg(long, default_value_t = 5)]
+    retries: u32,
+
+    /// Override the User-Agent sent to servers
+    #[arg(long = "user-agent")]
+    user_agent: Option<String>,
+
+    /// Ignore any partial file and download from the start
+    #[arg(long = "no-resume")]
+    no_resume: bool,
 }
 
 /// Parses a human rate like "500KB", "2MB", "1GB" or a bare number of bytes/sec.
@@ -62,9 +73,7 @@ async fn main() -> Result<()> {
 
     let max_bytes_per_sec = cli.limit.as_deref().map(parse_rate).transpose()?;
 
-    let client = Client::builder()
-        .user_agent(concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION")))
-        .build()?;
+    let client = build_client(cli.user_agent.as_deref())?;
 
     if let Some(secs) = cli.start_in {
         println!("Scheduled to start in {secs}s...");
@@ -96,6 +105,8 @@ async fn main() -> Result<()> {
             output: output.clone(),
             max_segments: cli.segments,
             max_bytes_per_sec,
+            max_retries: cli.retries,
+            allow_resume: !cli.no_resume,
             ..Default::default()
         };
 
@@ -125,6 +136,8 @@ async fn main() -> Result<()> {
             output: output.clone(),
             max_segments: cli.segments,
             max_bytes_per_sec,
+            max_retries: cli.retries,
+            allow_resume: !cli.no_resume,
             ..Default::default()
         });
         bars.push(bar);
@@ -150,7 +163,7 @@ async fn main() -> Result<()> {
     let mut had_error = false;
     for ((result, bar), output) in results.into_iter().zip(bars.iter()).zip(outputs.iter()) {
         match result {
-            Ok(()) => bar.finish_with_message(format!("done -> {}", output.display())),
+            Ok(_) => bar.finish_with_message(format!("done -> {}", output.display())),
             Err(e) => {
                 had_error = true;
                 bar.abandon_with_message(format!("failed: {e}"));
