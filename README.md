@@ -37,9 +37,12 @@ Atau pakai binary hasil build langsung:
 
 | Flag | Fungsi | Default |
 | --- | --- | --- |
-| `<url>` (positional) | URL file yang mau didownload | wajib diisi |
-| `-o`, `--output` | Path/nama file output | nama file diambil dari URL |
-| `-n`, `--segments` | Jumlah koneksi paralel | 8 |
+| `<url>...` (positional) | URL file yang mau didownload. Boleh lebih dari satu untuk queue | wajib diisi minimal 1 |
+| `-o`, `--output` | Path/nama file output (hanya valid untuk 1 URL) | nama file diambil dari URL |
+| `-n`, `--segments` | Jumlah koneksi paralel per file | 8 |
+| `-r`, `--limit` | Bandwidth cap per file, contoh `500KB`, `2MB`, `1GB` (dibagi rata ke semua koneksinya) | tidak dibatasi |
+| `-c`, `--concurrency` | Jumlah file yang didownload bersamaan saat ada banyak URL (queue) | 1 |
+| `--start-in <detik>` | Tunda mulai seluruh queue selama N detik (penjadwalan sederhana) | langsung mulai |
 
 Contoh lengkap:
 
@@ -48,6 +51,24 @@ cargo run -- "https://proof.ovh.net/files/10Mb.dat" -o "C:\Users\rezek\Downloads
 ```
 
 Kalau `-o` tidak diisi, file hasil download tersimpan relatif ke current working directory tempat command dijalankan — bukan folder Downloads bawaan Windows.
+
+### Bandwidth limiter
+
+Batasi total kecepatan satu file (dibagi rata ke semua koneksi paralelnya):
+
+```powershell
+cargo run -- "https://example.com/file.zip" -r 2MB
+```
+
+### Queue multi-file + penjadwalan
+
+Download beberapa file sekaligus, maksimal N file aktif bersamaan, dan bisa ditunda mulainya:
+
+```powershell
+cargo run -- "https://example.com/a.zip" "https://example.com/b.zip" -c 2 --start-in 60
+```
+
+Nama file tiap job di queue otomatis diambil dari URL masing-masing (flag `-o` tidak berlaku saat ada lebih dari satu URL).
 
 ## Cara Kerja Engine
 
@@ -63,8 +84,10 @@ Kalau `-o` tidak diisi, file hasil download tersimpan relatif ke current working
 | --- | --- |
 | `Cargo.toml` | Dependencies: tokio, reqwest, clap, indicatif, anyhow, futures-util |
 | `src/lib.rs` | Expose `download()`, `DownloadOptions`, `ProgressCallback` sebagai library, supaya reusable dari GUI nanti |
-| `src/downloader.rs` | Core logic: probe server, split range jadi segmen, download paralel per segmen ke offset file, retry, fallback single connection |
-| `src/main.rs` | CLI: parsing argumen (clap), progress bar (indicatif), memanggil `download()` dari lib |
+| `src/downloader.rs` | Core logic: probe server, split range jadi segmen, download paralel per segmen ke offset file, retry, fallback single connection, bandwidth limiter per koneksi |
+| `src/rate_limiter.rs` | Token-bucket rate limiter buat throttle kecepatan per koneksi |
+| `src/queue.rs` | Jalankan banyak `DownloadOptions` sekaligus dengan batas concurrency (`run_queue`) |
+| `src/main.rs` | CLI: parsing argumen (clap), progress bar (indicatif), mode single-file & queue multi-file |
 
 ## Troubleshooting
 
@@ -77,8 +100,8 @@ Kalau `-o` tidak diisi, file hasil download tersimpan relatif ke current working
 
 ## Roadmap
 
-- GUI desktop pakai Tauri (reuse `download_engine` sebagai library, frontend bisa React/Next.js)
-- Bandwidth limiter (throttle kecepatan per koneksi)
-- Queue multi-file + penjadwalan
-- Clipboard monitor (auto-detect link download)
-- Browser integration lewat Native Messaging
+- [x] Bandwidth limiter (throttle kecepatan per koneksi)
+- [x] Queue multi-file + penjadwalan
+- [ ] GUI desktop pakai Tauri (reuse `download_engine` sebagai library, frontend bisa React/Next.js)
+- [ ] Clipboard monitor (auto-detect link download)
+- [ ] Browser integration lewat Native Messaging
