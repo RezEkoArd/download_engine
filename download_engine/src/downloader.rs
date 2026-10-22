@@ -47,6 +47,22 @@ struct ByteRange {
     end: u64, // inclusive
 }
 
+/// Derives a default output file name from a URL's last path segment.
+pub fn guess_filename(url: &str) -> PathBuf {
+    let name = url
+        .rsplit('/')
+        .next()
+        .unwrap_or("download.bin")
+        .split('?')
+        .next()
+        .unwrap_or("download.bin");
+    if name.is_empty() {
+        PathBuf::from("download.bin")
+    } else {
+        PathBuf::from(name)
+    }
+}
+
 /// Downloads `opts.url` to `opts.output`, splitting into multiple parallel
 /// range-requested segments when the server supports it, falling back to a
 /// single streamed connection otherwise.

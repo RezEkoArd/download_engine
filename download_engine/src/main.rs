@@ -6,7 +6,7 @@ use clap::Parser;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use reqwest::Client;
 
-use download_engine::{download, run_queue, DownloadOptions, QueueOptions};
+use download_engine::{download, guess_filename, run_queue, DownloadOptions, QueueOptions};
 
 /// Segmented, multi-connection downloader (IDM-style core engine).
 #[derive(Parser)]
@@ -34,21 +34,6 @@ struct Cli {
     /// Delay the whole queue by this many seconds before starting (simple scheduling)
     #[arg(long = "start-in")]
     start_in: Option<u64>,
-}
-
-fn guess_filename(url: &str) -> PathBuf {
-    let name = url
-        .rsplit('/')
-        .next()
-        .unwrap_or("download.bin")
-        .split('?')
-        .next()
-        .unwrap_or("download.bin");
-    if name.is_empty() {
-        PathBuf::from("download.bin")
-    } else {
-        PathBuf::from(name)
-    }
 }
 
 /// Parses a human rate like "500KB", "2MB", "1GB" or a bare number of bytes/sec.
