@@ -9,6 +9,8 @@ use download_engine::{
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+mod persistence;
+
 #[derive(Clone, Serialize)]
 struct JobProgress {
     job_id: String,
@@ -213,6 +215,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
             app.manage(EngineState::default());
             Ok(())
@@ -226,6 +229,8 @@ pub fn run() {
             segment_progress,
             set_global_speed_limit,
             set_user_agent,
+            persistence::load_app_state,
+            persistence::save_app_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
