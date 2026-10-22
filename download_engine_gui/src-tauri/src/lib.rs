@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use download_engine::{
-    build_client, download_with_handle, guess_filename, probe, DownloadHandle, DownloadOptions, DownloadOutcome,
-    SharedRateLimiter,
+    build_client, discard_partial, download_with_handle, guess_filename, probe, DownloadHandle, DownloadOptions,
+    DownloadOutcome, ResumeState, SharedRateLimiter,
 };
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -22,6 +22,12 @@ struct JobProgress {
 struct ProbeResult {
     total_size: u64,
     supports_range: bool,
+}
+
+#[derive(Clone, Serialize)]
+struct ResumeInfo {
+    downloaded: u64,
+    total: u64,
 }
 
 #[derive(Clone, Serialize)]
@@ -86,6 +92,27 @@ async fn probe_url(state: State<'_, EngineState>, url: String) -> Result<ProbeRe
     })
 }
 
+/// Reports how much of a partial file is already on disk, so the UI can offer
+/// "Resume" with a real number instead of a blind restart.
+#[tauri::command]
+async fn resume_info(output: Option<String>) -> Option<ResumeInfo> {
+    let output = PathBuf::from(output?);
+    let state = ResumeState::load(&output).await?;
+    Some(ResumeInfo {
+        downloaded: state.downloaded(),
+        total: state.total_size,
+    })
+}
+
+/// Throws away a partial download and its sidecar, so removing a job doesn't
+/// leave gigabytes of half-finished file behind.
+#[tauri::command]
+async fn discard_download(output: Option<String>) {
+    if let Some(output) = output {
+        discard_partial(&PathBuf::from(output)).await;
+    }
+}
+
 /// Runs one download job, identified by `job_id` so the UI can track and
 /// control it independently from any other job running at the same time.
 #[tauri::command]
@@ -98,6 +125,7 @@ async fn start_download(
     segments: Option<u32>,
     limit: Option<String>,
     retries: Option<u32>,
+    allow_resume: Option<bool>,
 ) -> Result<JobResult, String> {
     let output: PathBuf = output.map(PathBuf::from).unwrap_or_else(|| guess_filename(&url));
     let max_bytes_per_sec = limit.as_deref().filter(|l| !l.is_empty()).map(parse_rate).transpose()?;
@@ -110,6 +138,7 @@ async fn start_download(
         max_bytes_per_sec,
         global_limiter: Some(state.limiter.clone()),
         max_retries: retries.unwrap_or(5),
+        allow_resume: allow_resume.unwrap_or(true),
         ..Default::default()
     };
 
@@ -222,6 +251,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             probe_url,
+            resume_info,
+            discard_download,
             start_download,
             pause_download,
             resume_download,
