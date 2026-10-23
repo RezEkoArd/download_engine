@@ -172,6 +172,32 @@ match download_with_handle(&client, opts, handle, on_progress).await? {
 | `global_limiter` | Cap yang dibagi dengan download lain. Berlaku di atas `max_bytes_per_sec`, yang lebih ketat yang menang | `None` |
 | `max_retries` | Retry per segmen sebelum gagal | 5 |
 | `allow_resume` | Pakai file parsial yang cocok kalau ada | `true` |
+| `headers` | Header tambahan untuk probe dan tiap segmen | kosong |
+
+### Header per job
+
+`headers` ada untuk link yang hanya bisa diambil dengan konteks browser — `Cookie` sesi, `Referer` yang dicek server, atau `User-Agent` tertentu. Tanpa itu, yang terunduh sering bukan filenya melainkan halaman login atau 403.
+
+```rust
+use download_engine::{DownloadOptions, HeaderMap, HeaderValue};
+
+let mut headers = HeaderMap::new();
+headers.insert("cookie", HeaderValue::from_static("session=abc123"));
+
+let opts = DownloadOptions {
+    url: "https://example.com/private.zip".into(),
+    headers,
+    ..Default::default()
+};
+```
+
+`HeaderMap`, `HeaderName`, dan `HeaderValue` di-re-export dari crate ini, jadi tidak perlu menambahkan dependency reqwest sendiri — sekaligus menutup risiko bentrok versi.
+
+Tiga hal yang dijamin:
+
+- **Header ikut ke probe, bukan hanya ke segmen.** Probe tanpa cookie bisa menjawab soal halaman login, dan seluruh rencana segmentasi jadi salah ukuran.
+- **`Range` dibuang.** Engine menetapkannya sendiri per segmen, dan reqwest meng-*append* bukan mengganti — `Range` dari pemanggil akan terkirim berdampingan dengan milik engine dan membuat server menebak.
+- **Kredensial tidak ikut lintas origin.** reqwest membuang `Cookie` dan `Authorization` saat redirect mengubah host, port, atau scheme.
 
 ## Struktur Project
 
@@ -206,5 +232,7 @@ match download_with_handle(&client, opts, handle, on_progress).await? {
 - [x] Pause / resume / cancel
 - [x] Resume lintas sesi (sidecar + validasi)
 - [x] GUI desktop pakai Tauri (reuse `download_engine` sebagai library)
-- [ ] Clipboard monitor (auto-detect link download)
-- [ ] Browser integration lewat Native Messaging
+- [x] Clipboard monitor (auto-detect link download)
+- [x] Header per job (`Cookie`/`Referer`/`User-Agent`) — fondasi integrasi browser
+- [x] HTTP listener localhost + pairing token (8b) — ada di crate GUI, bukan di engine
+- [x] Extension Chrome/Edge: menu klik-kanan (8c) — ada di `browser-extension/`

@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Download Engine",
+  "version": "0.1.0",
+  "description": "Kirim link dari browser ke aplikasi Download Engine yang jalan di komputer ini.",
+  "permissions": ["contextMenus", "storage"],
+  "optional_permissions": ["cookies"],
+  "host_permissions": ["http://127.0.0.1:47283/*"],
+  "optional_host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html",
+  "action": {
+    "default_title": "Download Engine"
+  },
+  "icons": {
+    "32": "icons/32.png",
+    "128": "icons/128.png"
+  }
+}

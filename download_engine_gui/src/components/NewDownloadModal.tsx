@@ -4,6 +4,8 @@ import type { NewJobInput } from "../types";
 interface Props {
   defaultSegments: number;
   defaultLimit: string;
+  /** Seeds the folder field; emptying it falls back to this same value anyway. */
+  defaultOutputDir: string;
   /** Pre-filled when the modal was opened by dropping a link onto the window. */
   initialUrl?: string;
   /** Existing job for this URL, so the form can warn before it's submitted. */
@@ -20,9 +22,24 @@ const LIMIT_OPTIONS = [
   { value: "10MB", label: "10 MB/s" },
 ];
 
-export default function NewDownloadModal({ defaultSegments, defaultLimit, initialUrl = "", duplicateOf, onClose, onSubmit, onBrowse }: Props) {
+export default function NewDownloadModal({
+  defaultSegments,
+  defaultLimit,
+  defaultOutputDir,
+  initialUrl = "",
+  duplicateOf,
+  onClose,
+  onSubmit,
+  onBrowse,
+}: Props) {
   const [url, setUrl] = useState(initialUrl);
-  const [outputPath, setOutputPath] = useState("");
+  // Pre-filled rather than left to the placeholder, so the folder the file is
+  // actually going to is visible and editable without opening Browse first.
+  const [outputPath, setOutputPath] = useState(defaultOutputDir);
+  // Left blank on purpose: blank is what lets the server's own
+  // `Content-Disposition` name win once the probe comes back, which is the
+  // only way a link like "/download?id=84213" ends up named sensibly.
+  const [fileName, setFileName] = useState("");
   const [segments, setSegments] = useState(defaultSegments);
   const [limit, setLimit] = useState(defaultLimit);
   const [startInSec, setStartInSec] = useState(0);
@@ -38,7 +55,7 @@ export default function NewDownloadModal({ defaultSegments, defaultLimit, initia
 
   function submit(forceStart: boolean) {
     if (!url.trim()) return;
-    onSubmit({ url: url.trim(), outputPath: outputPath.trim(), segments, limit, startInSec, forceStart });
+    onSubmit({ url: url.trim(), outputPath: outputPath.trim(), fileName: fileName.trim(), segments, limit, startInSec, forceStart });
   }
 
   return (
@@ -94,7 +111,7 @@ export default function NewDownloadModal({ defaultSegments, defaultLimit, initia
                 type="text"
                 value={outputPath}
                 onChange={(e) => setOutputPath(e.currentTarget.value)}
-                placeholder="Default: current working directory"
+                placeholder={defaultOutputDir || "Default: current working directory"}
                 className="flex-1 bg-gray-50 dark:bg-darkbg-900 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand-500 dark:text-gray-100"
               />
               <button
@@ -104,6 +121,21 @@ export default function NewDownloadModal({ defaultSegments, defaultLimit, initia
               >
                 <i className="fa-regular fa-folder-open" /> Browse
               </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Nama File (opsional)</label>
+            <input
+              type="text"
+              value={fileName}
+              onChange={(e) => setFileName(e.currentTarget.value)}
+              placeholder="Kosongkan untuk memakai nama dari server"
+              className="w-full bg-gray-50 dark:bg-darkbg-900 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand-500 dark:text-gray-100"
+            />
+            <div className="mt-1 text-[10px] text-gray-400">
+              Dibiarkan kosong: nama diambil dari URL dulu, lalu diganti nama yang diberikan server (header{" "}
+              <span className="font-mono">Content-Disposition</span>) kalau ada. Diisi: nama ini yang dipakai.
             </div>
           </div>
 

@@ -23,7 +23,8 @@ Butuh toolchain Rust + MinGW di PATH — lihat [Setup Environment di README root
 | Field | Keterangan |
 | --- | --- |
 | Download URL | wajib |
-| Save To Folder | folder tujuan. Kalau kosong, dipakai *Default Output Dir* dari Settings |
+| Save To Folder | folder tujuan, sudah terisi *Default Output Dir* dan bisa diedit. Kalau dikosongkan, nilai default itu juga yang dipakai |
+| Nama File | opsional. Kosong = nama ditentukan otomatis (lihat [Nama file dari server](#nama-file-dari-server)); diisi = nama itu yang dipakai |
 | Connections | jumlah koneksi paralel, 1–32 (default dari Settings) |
 | Bandwidth Limit | cap kecepatan khusus job ini |
 | Start Delay | tunda N detik sebelum job dimasukkan ke daftar |
@@ -33,9 +34,27 @@ Ada dua tombol dengan arti berbeda:
 - **Download Now** — langsung jalan, mengabaikan batas concurrency.
 - **Add to Queue** — masuk daftar berstatus *queued*, baru jalan saat ada slot kosong.
 
-> Kalau folder tujuan **dan** *Default Output Dir* dua-duanya kosong, file jatuh ke working directory proses aplikasi — bukan folder Downloads Windows. Set *Default Output Dir* di Settings sekali saja supaya tidak perlu memikirkannya lagi.
+Saat pertama dijalankan, *Default Output Dir* diisi otomatis ke **`<Downloads>\Download-Engine`**, jadi tidak perlu disetel dulu sebelum mulai. Nilainya tersimpan dan bisa diganti kapan saja di Settings.
 
-Begitu job ditambahkan, URL-nya langsung di-probe untuk mengambil ukuran file dan dukungan Range request, jadi kolom Size terisi sebelum download mulai.
+> **Kenapa subfolder, bukan langsung ke Downloads.** Pengaman tabrakan nama file hanya tahu job yang ada di daftar aplikasi ini, bukan isi folder di disk. Kalau tujuannya Downloads root, file `installer.exe` yang tadi diunduh browser bisa tertimpa tanpa peringatan. Dengan folder sendiri, satu-satunya file yang mungkin tertimpa adalah file yang aplikasi ini sendiri yang menaruhnya.
+
+Foldernya dibuat otomatis saat download pertama — engine memanggil `create_dir_all`, jadi tidak perlu disiapkan manual.
+
+Begitu job ditambahkan, URL-nya langsung di-probe untuk mengambil ukuran file, dukungan Range request, dan nama file yang diminta server — jadi kolom Size terisi sebelum download mulai.
+
+### Nama file dari server
+
+Kalau field *Nama File* dikosongkan, nama awal diambil dari URL, lalu diganti nama dari header `Content-Disposition` begitu probe selesai. Inilah yang membuat link seperti `https://example.com/download?id=84213` tersimpan sebagai `laporan-2024.pdf`, bukan `download`.
+
+Nama dari server adalah string yang sepenuhnya dikendalikan pemilik URL, jadi pembersihannya dilakukan di Rust — di `download_engine/src/filename.rs`, dipanggil dari `probe()` supaya nama mentah tidak pernah sampai ke pemanggil. Yang lolos hanya satu komponen path: separator, `..`, titik dan spasi di ujung, karakter kontrol (termasuk NUL), tanda bidi yang bisa menyamarkan ekstensi, serta nama device Windows (`CON`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`) semuanya ditangani. Panjangnya dibatasi, dan nama yang tersisa kosong setelah dibersihkan jatuh kembali ke nama dari URL — tidak pernah ke sesuatu yang dipilih server.
+
+Yang tidak diganti namanya:
+
+- job yang namanya **diisi user** di form — pilihan user menang atas usulan server;
+- job **tanpa folder tujuan**, karena nama file-nya ditentukan engine sendiri dari URL dan label di daftar harus tetap cocok dengan apa yang ditulis ke disk;
+- job yang **sudah mulai menulis byte** — saat itu engine sudah membuat dan mem-prealokasi file di path lama, jadi mengganti nama job hanya akan membuat aplikasi kehilangan jejak file-nya. Karena itu probe ditunggu dulu sebelum scheduler diizinkan menjalankan job baru.
+
+Pengaman tabrakan nama tetap berlaku: nama dari server yang kebetulan sama dengan tujuan job lain dapat ` (1)`, bukan menimpa.
 
 ### Link duplikat & tabrakan nama file
 
@@ -133,6 +152,7 @@ Pilihan selalu dijaga hanya berisi baris yang **sedang terlihat**. Job yang diha
 - **Search** — filter berdasarkan nama file atau URL.
 - Sidebar kiri memfilter berdasarkan status (dengan jumlahnya) dan kategori file (compressed, documents, video, programs).
 - Panel bawah sidebar menampilkan kecepatan total, jumlah segmen aktif, dan pemakaian slot concurrency.
+- Ikon matahari/bulan di title bar mengganti tema terang/gelap. Pilihannya tersimpan antar sesi dan **tidak** mengikuti tema Windows — toggle ini yang menentukan.
 
 ### Settings
 
@@ -140,11 +160,12 @@ Pilihan selalu dijaga hanya berisi baris yang **sedang terlihat**. Job yang diha
 | --- | --- |
 | Default Segments | nilai awal Connections di form |
 | Default Limit | nilai awal Bandwidth Limit di form |
-| Default Output Dir | folder tujuan kalau form dibiarkan kosong |
+| Default Output Dir | folder tujuan kalau form dibiarkan kosong. Terisi otomatis ke `<Downloads>\Download-Engine` saat pertama jalan |
 | Concurrency | berapa job boleh aktif bersamaan. Job *paused* tetap menghitung |
 | Max Retries | percobaan ulang per segmen sebelum job dinyatakan gagal |
 | User Agent | mengganti User-Agent. Berguna untuk server yang menolak client tak dikenal |
 | Pantau Clipboard | aktifkan clipboard monitor (default **mati**) |
+| Terima Link dari Extension Browser | aktifkan bridge HTTP lokal (default **mati**) |
 
 ### Clipboard monitor
 
@@ -159,6 +180,38 @@ Begitu juga saat monitor baru dinyalakan: bacaan pertama hanya dipakai sebagai b
 > **Kenapa default-nya mati.** Clipboard tidak punya event "berubah", jadi satu-satunya cara adalah membacanya berkala (tiap 1,5 detik) — dan itu berarti **semua** isi clipboard terbaca, termasuk password yang kebetulan sedang kamu copy dari password manager. Yang dilakukan aplikasi: teks dibaca, dicek apakah URL http(s), dan kalau bukan langsung dibuang dari memori. Tidak ditulis ke `app-state.json`, tidak dikirim ke jaringan, tidak di-log. Tetap saja, karena ini keputusan privasi dan bukan keputusan teknis, fitur ini harus kamu nyalakan sendiri.
 
 Permission `clipboard-manager:allow-read-text` hanya ada di capability karena fitur ini. Kalau kamu tidak memerlukannya, mencabut baris itu dari `src-tauri/capabilities/default.json` akan membuat pembacaan clipboard gagal di level Tauri, apa pun isi Settings.
+
+### Bridge extension browser
+
+Kalau diaktifkan di Settings, aplikasi membuka listener HTTP di **`127.0.0.1:47283`**. Extension browser mengirim link ke situ, job langsung masuk daftar seperti kalau kamu menambahkannya sendiri (masuk antrian — scheduler yang memutuskan kapan mulai, menghormati batas Concurrency).
+
+Extension-nya ada di [`browser-extension/`](../browser-extension/README.md) — pemasangan dan pairing-nya dijelaskan di situ.
+
+Settings juga menampilkan **token pairing**: tempelkan ke halaman opsi extension. Token dibuat sekali dari 32 byte acak OS lalu disimpan di `bridge-token` di app data dir, jadi pairing-nya tidak hilang tiap restart.
+
+**Apa yang menjaganya.** Socket loopback bisa dihubungi oleh setiap proses di komputer ini *dan* oleh JavaScript di halaman web mana pun yang kamu buka — "cuma localhost" bukan model keamanan. Ada tiga lapis:
+
+1. Bind ke `127.0.0.1`, bukan `0.0.0.0`. Tidak ada apa pun di jaringan yang bisa menjangkaunya.
+2. **`Origin` harus origin extension.** Saat JS halaman web memanggil loopback, browser melampirkan `Origin` yang tidak bisa dipalsukan halaman itu, jadi menolak `http(s)://` menutup seluruh kasus drive-by. `null` (iframe sandbox) juga ditolak.
+3. **Token di request header.** Perlu karena cek `Origin` hanya mengikat pemanggil yang memang browser — proses lokal biasa bisa mengaku origin apa saja. Tokennya wajib lewat header, bukan query string: header non-standar memaksa CORS preflight yang tidak bisa dipenuhi halaman web, jadi ini sekaligus pertahanan CSRF.
+
+Endpoint-nya dua: `GET /ping` (untuk membedakan "app tidak jalan" dari "app jalan tapi belum pairing") dan `POST /download` dengan body `{"url": "...", "headers": {...}}`. Body dibatasi 64 KB. URL wajib `http`/`https` — engine sendiri mau menerima string apa pun, jadi pembatasan skema di sini yang mencegah pemanggil luar mengarahkannya ke `file://`.
+
+Tes manual tanpa extension:
+
+```powershell
+$token = Get-Content "$env:APPDATA\com.rezek.download_engine_gui\bridge-token"
+curl.exe -i -X POST http://127.0.0.1:47283/download `
+  -H "content-type: application/json" `
+  -H "x-download-engine-token: $token" `
+  -d '{\"url\":\"https://example.com/file.zip\"}'
+```
+
+**Header per job tidak disimpan ke disk.** Cookie sesi yang dikirim extension hanya hidup di memori selama aplikasi jalan, tidak ikut masuk `app-state.json`. Konsekuensinya: job dari extension yang kamu lanjutkan setelah aplikasi restart akan mencoba tanpa cookie-nya dan bisa gagal — kirim ulang dari browser untuk dapat cookie yang masih berlaku. Itu disengaja; menaruh kredensial login di file JSON plaintext harganya lebih besar daripada kenyamanan resume.
+
+Nama file **tidak** diambil dari permintaan extension, melainkan dari URL seperti jalur penambahan job lainnya. Nama dari luar akan digabungkan ke folder tujuan, dan `..\..\` di dalamnya berarti penulisan ke mana pun si pemanggil mau.
+
+> **Kenapa default-nya mati.** Membuka port adalah hal yang tidak pantas dilakukan aplikasi di belakang punggung penggunanya. Selama toggle-nya mati, tidak ada socket yang dibuka sama sekali.
 
 ### System tray
 
@@ -199,6 +252,7 @@ Frontend memegang daftar job; engine hanya tahu soal download yang sedang jalan.
 | `src/App.tsx` | state daftar job, scheduler concurrency, filter, listener event |
 | `src/types.ts` | `Job`, `AppSettings`, `JobStatus`, dan kawan-kawan |
 | `src/lib/format.ts` | format byte, ETA, deteksi kategori file, nama file anti-tabrakan |
+| `src/lib/paths.ts` | folder tujuan default (`<Downloads>\Download-Engine`) |
 | `src/lib/persistence.ts` | load/save state + penandaan status *interrupted* |
 | `src/lib/notifications.ts` | notifikasi selesai/gagal, hasil cek izin di-cache |
 | `src/lib/jobActions.ts` | buka folder (reveal), copy ke clipboard, baca clipboard |
@@ -206,7 +260,9 @@ Frontend memegang daftar job; engine hanya tahu soal download yang sedang jalan.
 | `src/components/NewDownloadModal.tsx` | form tambah download |
 | `src/components/SettingsModal.tsx` | form setting |
 | `src/components/InspectorDrawer.tsx` | panel progress per segmen + aksi per job |
+| `src/lib/bridge.ts` | wrapper command bridge (info + on/off) |
 | `src-tauri/src/lib.rs` | Tauri commands, tray, jembatan ke engine |
+| `src-tauri/src/bridge.rs` | listener HTTP loopback untuk extension browser |
 | `src-tauri/src/persistence.rs` | baca/tulis `app-state.json` |
 
 ### Tauri commands
@@ -222,9 +278,13 @@ Frontend memegang daftar job; engine hanya tahu soal download yang sedang jalan.
 | `set_global_speed_limit` | cap gabungan semua download |
 | `set_user_agent` | ganti User-Agent untuk request berikutnya |
 | `quit_app` | keluar sungguhan (dipakai menu tray setelah state di-flush) |
+| `bridge_info` | port + token pairing, tanpa menjalankan listener |
+| `set_bridge_enabled` | buka/tutup listener loopback |
 | `load_app_state` / `save_app_state` | persistensi state UI |
 
-Event dari Rust ke UI: `job-progress` (progress per job), serta `tray-start-all`, `tray-pause-all`, `tray-quit` dari menu tray.
+`probe_url` dan `start_download` menerima argumen `headers` opsional. Isinya difilter terhadap allowlist (`cookie`, `referer`, `user-agent`, `authorization`, `accept`, `accept-language`, `origin`) — allowlist dan bukan blocklist, karena sumbernya ada di luar kendali aplikasi. Entri yang tidak lolos dibuang, bukan menggagalkan seluruh request.
+
+Event dari Rust ke UI: `job-progress` (progress per job), `bridge-download` (link dari extension), serta `tray-start-all`, `tray-pause-all`, `tray-quit` dari menu tray.
 
 Entri tray yang bergantung pada daftar job dikirim sebagai event, bukan dikerjakan di Rust, karena daftar job tinggal di frontend.
 

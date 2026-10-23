@@ -1,0 +1,11 @@
+[package]
+name = "bridge_guard"
+version = "0.1.0"
+edition = "2024"
+description = "Authorisation checks for the browser bridge's loopback endpoint"
+
+[dependencies]
+# `HeaderMap` is taken by reference straight off a hyper request, so this must
+# stay the same `http` major that hyper re-exports or the types stop matching.
+http = "1"
+getrandom = "0.3"

@@ -26,11 +26,23 @@ export interface Job {
   error: string | null;
   createdAt: number;
   lastTick: { time: number; downloaded: number } | null;
+  /**
+   * The user named this file themselves, so the probe must not rename it.
+   * Without this a `Content-Disposition` would quietly overrule the name they
+   * typed into the form.
+   */
+  nameFromUser: boolean;
 }
 
 export interface NewJobInput {
   url: string;
+  /** Folder to save into. Empty falls back to `settings.defaultOutputDir`. */
   outputPath: string;
+  /**
+   * File name the user typed. Empty means "work it out": the URL supplies a
+   * placeholder and the server's suggestion replaces it once the probe lands.
+   */
+  fileName: string;
   segments: number;
   limit: string;
   startInSec: number;
@@ -46,13 +58,41 @@ export interface AppSettings {
   userAgent: string;
   /** Watch the clipboard for links. Off by default — see the GUI README. */
   clipboardMonitor: boolean;
+  /** Listen for links from the browser extension. Off by default: it opens a port. */
+  browserBridge: boolean;
 }
+
+/** Where the browser extension should connect, and the token it must present. */
+export interface BridgeInfo {
+  port: number;
+  token: string;
+  running: boolean;
+}
+
+/**
+ * Extra request headers a job needs to resolve — a session `Cookie`, a
+ * `Referer` the server checks. Only ever supplied by the browser extension.
+ */
+export type JobHeaders = Record<string, string>;
 
 /** Live per-segment progress, polled from the engine while a job runs. */
 export interface SegmentProgress {
   index: number;
   downloaded: number;
   total: number;
+}
+
+/** What a HEAD request told the engine about a URL, before anything is saved. */
+export interface ProbeResult {
+  total_size: number;
+  supports_range: boolean;
+  /**
+   * The server's preferred file name, from `Content-Disposition`.
+   *
+   * Already sanitised by the engine into a single path component — it cannot
+   * contain a separator or `..` — so it is safe to join onto the output folder.
+   */
+  suggested_filename: string | null;
 }
 
 /** How much of a partial file is already on disk and can be continued. */

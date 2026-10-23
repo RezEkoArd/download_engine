@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <title>Download Engine — Opsi</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --fg: #1f2937;
+        --muted: #6b7280;
+        --bg: #ffffff;
+        --field: #f9fafb;
+        --line: #e5e7eb;
+        --brand: #4f46e5;
+        --ok: #16a34a;
+        --bad: #dc2626;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --fg: #f3f4f6;
+          --muted: #9ca3af;
+          --bg: #111827;
+          --field: #1f2937;
+          --line: #374151;
+          --brand: #818cf8;
+        }
+      }
+      body {
+        font: 13px/1.6 system-ui, sans-serif;
+        color: var(--fg);
+        background: var(--bg);
+        margin: 0;
+        padding: 24px;
+        max-width: 520px;
+      }
+      h1 {
+        font-size: 15px;
+        margin: 0 0 4px;
+      }
+      p.sub {
+        color: var(--muted);
+        font-size: 12px;
+        margin: 0 0 20px;
+      }
+      label.field {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      input[type="text"],
+      input[type="password"] {
+        width: 100%;
+        box-sizing: border-box;
+        font-family: ui-monospace, monospace;
+        font-size: 11px;
+        padding: 8px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--field);
+        color: var(--fg);
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      button {
+        font: inherit;
+        font-size: 12px;
+        padding: 7px 14px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--field);
+        color: var(--fg);
+        cursor: pointer;
+      }
+      button.primary {
+        background: var(--brand);
+        border-color: var(--brand);
+        color: #fff;
+        font-weight: 600;
+      }
+      #status {
+        margin-top: 12px;
+        font-size: 12px;
+        min-height: 18px;
+      }
+      #status.ok {
+        color: var(--ok);
+      }
+      #status.bad {
+        color: var(--bad);
+      }
+      hr {
+        border: 0;
+        border-top: 1px solid var(--line);
+        margin: 22px 0;
+      }
+      .check {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+      }
+      .check span {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .check strong {
+        color: var(--fg);
+        display: block;
+        font-size: 13px;
+      }
+      code {
+        font-family: ui-monospace, monospace;
+        background: var(--field);
+        padding: 1px 4px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Download Engine</h1>
+    <p class="sub">Extension mengirim link ke aplikasi di <code>127.0.0.1:47283</code>. Aplikasi harus jalan dan bridge-nya dinyalakan di Settings.</p>
+
+    <label class="field" for="token">Token pairing</label>
+    <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Copy dari Settings aplikasi" />
+    <div class="row">
+      <button id="save" class="primary">Simpan</button>
+      <button id="test">Tes koneksi</button>
+      <button id="reveal">Tampilkan</button>
+    </div>
+    <div id="status"></div>
+
+    <hr />
+
+    <label class="check">
+      <input id="cookies" type="checkbox" />
+      <span>
+        <strong>Sertakan cookie situs</strong>
+        Diperlukan untuk link yang hanya bisa diunduh setelah login. Tanpa ini, link seperti itu akan mengunduh halaman login atau gagal dengan 403.
+        <br /><br />
+        Mengaktifkannya memberi extension izin membaca <em>semua</em> cookie-mu, termasuk yang <code>HttpOnly</code> — yang normalnya tidak bisa dibaca JavaScript halaman mana pun. Cookie
+        hanya dibaca saat kamu menekan menu klik-kanan, hanya untuk situs link itu, dan hanya dikirim ke aplikasi di komputer ini. Biarkan mati kalau kamu tidak butuh.
+      </span>
+    </label>
+    <div id="permStatus" class="sub" style="margin-top: 10px"></div>
+
+    <script src="options.js"></script>
+  </body>
+</html>

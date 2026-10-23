@@ -11,6 +11,12 @@ Satu repo, dua crate yang digabung lewat Cargo workspace:
 
 Engine sengaja berupa library, jadi GUI dan CLI berbagi logic download yang sama tanpa duplikasi.
 
+Di luar workspace Cargo ada satu komponen lagi:
+
+| Folder | Isi | Dokumentasi |
+| --- | --- | --- |
+| `browser-extension` | Extension Chrome/Edge (MV3). Menu klik-kanan yang mengirim link ke aplikasi lewat bridge loopback-nya | [browser-extension/README.md](browser-extension/README.md) |
+
 ## Setup Environment
 
 Butuh **Rust**, **Node.js 20+**, dan **pnpm**.
@@ -83,7 +89,12 @@ download_engine/              # core engine + CLI
 download_engine_gui/          # aplikasi desktop
   src/                        # frontend React
   src-tauri/src/lib.rs        # Tauri commands, tray, jembatan ke engine
+  src-tauri/src/bridge.rs     # listener HTTP loopback untuk extension browser
   src-tauri/src/persistence.rs# baca/tulis app-state.json
+
+browser-extension/            # extension Chrome/Edge (MV3)
+  background.js               # menu klik-kanan + kirim ke bridge
+  options.html / options.js   # pairing token + izin cookie opsional
 ```
 
 ## Status Fitur
@@ -102,5 +113,8 @@ download_engine_gui/          # aplikasi desktop
 - [x] Multi-select job (bulk pause/cancel/retry)
 - [x] Drag-and-drop URL ke window
 - [x] Deteksi URL duplikat + nama file anti-tabrakan
+- [x] Nama file dari `Content-Disposition` server (termasuk RFC 5987), disanitasi di engine
 - [x] Clipboard monitor (auto-detect link, opt-in)
-- [ ] Browser integration lewat Native Messaging
+- [x] Header per job (`Cookie`/`Referer`/`User-Agent`) — fondasi integrasi browser
+- [x] HTTP listener localhost + pairing token (opt-in, `127.0.0.1:47283`)
+- [x] Extension Chrome/Edge: menu klik-kanan "Download with Download Engine"

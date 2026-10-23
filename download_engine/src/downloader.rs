@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 use futures_util::StreamExt;
+use reqwest::header::HeaderMap;
 use reqwest::Client;
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
@@ -12,6 +13,7 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 use crate::control::{DownloadHandle, DownloadOutcome};
+use crate::filename::{filename_from_content_disposition, sanitize_filename};
 use crate::rate_limiter::SharedRateLimiter;
 use crate::resume::{partial_file_matches, ResumeState, SegmentCheckpoint};
 
@@ -40,6 +42,18 @@ pub struct DownloadOptions {
     /// Pick up a matching partial file instead of starting over. Turn off to
     /// force a clean download.
     pub allow_resume: bool,
+    /// Extra headers sent with every request this download makes — the probe
+    /// and each segment alike.
+    ///
+    /// Exists for links that only resolve with the browser's context: a session
+    /// `Cookie`, a `Referer` the server checks, or a `User-Agent` it expects.
+    /// Fetching those with a bare request usually returns a login page or a
+    /// 403 rather than the file.
+    ///
+    /// Safe across redirects: reqwest drops `Cookie` and `Authorization` when a
+    /// redirect changes host, port, or scheme, so credentials put here don't
+    /// follow a link off to another origin.
+    pub headers: HeaderMap,
 }
 
 impl Default for DownloadOptions {
@@ -53,6 +67,7 @@ impl Default for DownloadOptions {
             global_limiter: None,
             max_retries: 5,
             allow_resume: true,
+            headers: HeaderMap::new(),
         }
     }
 }
@@ -66,6 +81,13 @@ pub struct ProbeInfo {
     /// copy before resuming it.
     pub etag: Option<String>,
     pub last_modified: Option<String>,
+    /// File name the server asked for via `Content-Disposition`, already
+    /// reduced to a safe single component by [`sanitize_filename`].
+    ///
+    /// Only a suggestion: a caller that already has a name the *user* chose
+    /// should keep it. `None` means the server offered nothing usable, and the
+    /// URL-derived [`guess_filename`] stands.
+    pub suggested_filename: Option<String>,
 }
 
 /// How often the partial download's progress is checkpointed to disk.
@@ -96,19 +118,13 @@ pub fn build_client(user_agent: Option<&str>) -> Result<Client> {
 }
 
 /// Derives a default output file name from a URL's last path segment.
+///
+/// The URL is as untrusted as any header, so the segment goes through
+/// [`sanitize_filename`] too; `download.bin` covers everything that leaves
+/// nothing usable behind.
 pub fn guess_filename(url: &str) -> PathBuf {
-    let name = url
-        .rsplit('/')
-        .next()
-        .unwrap_or("download.bin")
-        .split('?')
-        .next()
-        .unwrap_or("download.bin");
-    if name.is_empty() {
-        PathBuf::from("download.bin")
-    } else {
-        PathBuf::from(name)
-    }
+    let name = url.rsplit('/').next().unwrap_or_default().split('?').next().unwrap_or_default();
+    PathBuf::from(sanitize_filename(name).unwrap_or_else(|| "download.bin".to_string()))
 }
 
 /// Downloads `opts.url` to `opts.output` with no outside control over it.
@@ -131,13 +147,20 @@ pub async fn download_with_handle(
     handle: DownloadHandle,
     on_progress: ProgressCallback,
 ) -> Result<DownloadOutcome> {
+    // Range belongs to the engine: it sets one per segment. reqwest's `header`
+    // appends rather than replaces, so a caller-supplied Range wouldn't
+    // override ours, it would ride along beside it and leave the server to
+    // guess. Drop it once here rather than at each request site.
+    let mut opts = opts;
+    opts.headers.remove(reqwest::header::RANGE);
+
     ensure_parent_dir(&opts.output).await?;
 
     if handle.is_cancelled() {
         return Ok(DownloadOutcome::Cancelled);
     }
 
-    let info = probe(client, &opts.url).await?;
+    let info = probe(client, &opts.url, &opts.headers).await?;
     let total_size = info.total_size;
 
     if total_size == 0 || !info.supports_range {
@@ -191,6 +214,7 @@ pub async fn download_with_handle(
     for (id, checkpoint) in checkpoints.into_iter().enumerate() {
         let client = client.clone();
         let url = opts.url.clone();
+        let extra_headers = opts.headers.clone();
         let output = opts.output.clone();
         let downloaded = downloaded.clone();
         let on_progress = on_progress.clone();
@@ -208,6 +232,7 @@ pub async fn download_with_handle(
             download_range(
                 &client,
                 &url,
+                &extra_headers,
                 &output,
                 id,
                 range,
@@ -304,8 +329,17 @@ fn spawn_checkpointer(handle: &DownloadHandle, opts: &DownloadOptions, info: &Pr
 
 /// Asks the server for a file's size, Range support and change validators,
 /// without downloading anything.
-pub async fn probe(client: &Client, url: &str) -> Result<ProbeInfo> {
-    let resp = client.head(url).send().await.context("HEAD request failed")?;
+///
+/// `extra_headers` has to match what the segments will send. A probe made
+/// without the caller's cookies can answer about a login page instead of the
+/// file, and the whole download would then be planned around the wrong size.
+pub async fn probe(client: &Client, url: &str, extra_headers: &HeaderMap) -> Result<ProbeInfo> {
+    let resp = client
+        .head(url)
+        .headers(extra_headers.clone())
+        .send()
+        .await
+        .context("HEAD request failed")?;
     if !resp.status().is_success() {
         bail!("server returned {} for HEAD request", resp.status());
     }
@@ -329,11 +363,19 @@ pub async fn probe(client: &Client, url: &str) -> Result<ProbeInfo> {
     let etag = header_string(reqwest::header::ETAG);
     let last_modified = header_string(reqwest::header::LAST_MODIFIED);
 
+    // Sanitised here rather than at the caller: this is where an attacker-chosen
+    // string crosses into the engine, and a `ProbeInfo` that could carry
+    // `..\..\evil.exe` would make every consumer responsible for remembering.
+    let suggested_filename = header_string(reqwest::header::CONTENT_DISPOSITION)
+        .as_deref()
+        .and_then(filename_from_content_disposition);
+
     Ok(ProbeInfo {
         total_size: declared_size.or_else(|| resp.content_length()).unwrap_or(0),
         supports_range,
         etag,
         last_modified,
+        suggested_filename,
     })
 }
 
@@ -387,9 +429,11 @@ async fn allocate_file(path: &PathBuf, size: u64) -> Result<()> {
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 async fn download_range(
     client: &Client,
     url: &str,
+    extra_headers: &HeaderMap,
     output: &PathBuf,
     id: usize,
     range: ByteRange,
@@ -417,6 +461,7 @@ async fn download_range(
         let result = download_range_once(
             client,
             url,
+            extra_headers,
             output,
             id,
             start,
@@ -476,9 +521,11 @@ async fn backoff(attempt: u32) {
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 async fn download_range_once(
     client: &Client,
     url: &str,
+    extra_headers: &HeaderMap,
     output: &PathBuf,
     id: usize,
     start: u64,
@@ -496,6 +543,7 @@ async fn download_range_once(
         _ = cancel.cancelled() => return Ok(StreamStop::Cancelled),
         resp = client
             .get(url)
+            .headers(extra_headers.clone())
             .header(reqwest::header::RANGE, format!("bytes={start}-{end}"))
             .send() => resp.context("GET request failed")?,
     };
@@ -555,7 +603,7 @@ async fn download_single(
     let resp = tokio::select! {
         biased;
         _ = cancel.cancelled() => return Ok(DownloadOutcome::Cancelled),
-        resp = client.get(&opts.url).send() => resp.context("GET request failed")?,
+        resp = client.get(&opts.url).headers(opts.headers.clone()).send() => resp.context("GET request failed")?,
     };
     if !resp.status().is_success() {
         bail!("unexpected status {}", resp.status());

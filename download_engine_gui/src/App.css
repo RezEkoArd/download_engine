@@ -1,6 +1,14 @@
 @import "tailwindcss";
 @import "@fortawesome/fontawesome-free/css/all.min.css";
 
+/*
+ * Tailwind v4 wires `dark:` to `prefers-color-scheme` by default, so every
+ * `dark:` class followed the OS theme and the `.dark` class the toggle puts on
+ * <html> did nothing at all. Re-point the variant at that class so the toggle
+ * is what decides.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-brand-50: #eff6ff;
   --color-brand-100: #dbeafe;

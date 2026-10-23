@@ -13,6 +13,13 @@ edition = "2024"
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "download_engine_gui_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+# No unit-test harness for this crate. Linking Tauri pulls in a static import of
+# `TaskDialogIndirect` (Common Controls v6) and a load-time `WebView2Loader.dll`,
+# but the manifest that redirects `comctl32.dll` to v6 is embedded only into
+# *binary* targets, so a test harness here dies with
+# STATUS_ENTRYPOINT_NOT_FOUND before it runs a single test. Testable logic goes
+# in a crate that doesn't link Tauri — see `bridge_guard`.
+test = false
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -29,3 +36,13 @@ download_engine = { path = "../../download_engine" }
 reqwest = { version = "0.13", features = ["stream"] }
 tauri-plugin-single-instance = "2.5.4"
 tauri-plugin-clipboard-manager = "2.5.0"
+# The browser bridge listens on loopback. hyper is already in the tree as
+# reqwest's client, so serving with it costs a feature flag rather than a whole
+# new HTTP stack — and keeps request parsing out of hand-written code.
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+tokio = { version = "1", features = ["net"] }
+# The bridge's authorisation checks. Separate so they can be unit-tested
+# without linking Tauri — see that crate's docs for why that matters on Windows.
+bridge_guard = { path = "../bridge_guard" }

@@ -5,13 +5,14 @@ use std::sync::{Arc, Mutex};
 
 use download_engine::{
     build_client, discard_partial, download_with_handle, guess_filename, probe, DownloadHandle, DownloadOptions,
-    DownloadOutcome, ResumeState, SharedRateLimiter,
+    DownloadOutcome, HeaderMap, HeaderName, HeaderValue, ResumeState, SharedRateLimiter,
 };
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 
+mod bridge;
 mod persistence;
 
 #[derive(Clone, Serialize)]
@@ -25,6 +26,9 @@ struct JobProgress {
 struct ProbeResult {
     total_size: u64,
     supports_range: bool,
+    /// Name the server suggested, already sanitised by the engine into a single
+    /// path component. The UI may use it as a file name as-is.
+    suggested_filename: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -86,15 +90,54 @@ fn parse_rate(input: &str) -> Result<u64, String> {
     Ok(number * multiplier)
 }
 
-/// Checks a URL's size and Range-request support before a download starts,
-/// so the UI can show it without guessing.
+/// Headers a caller is allowed to put on a download.
+///
+/// An allowlist rather than a blocklist: these pairs come from outside the app
+/// — a browser extension hands over the context a link needs to resolve — and
+/// this is the narrowest set that makes a logged-in download work. Anything
+/// else is dropped, so a compromised or buggy caller can't turn the engine
+/// into a general-purpose request forger.
+const ALLOWED_HEADERS: &[&str] = &[
+    "cookie",
+    "referer",
+    "user-agent",
+    "authorization",
+    "accept",
+    "accept-language",
+    "origin",
+];
+
+/// Validates header pairs coming from a caller into a `HeaderMap`.
+///
+/// Malformed or disallowed entries are skipped instead of failing the whole
+/// call: one bad pair shouldn't block a download the user asked for. Note that
+/// `HeaderValue::from_str` rejects control characters, which is what stops a
+/// crafted value from injecting extra headers.
+fn to_header_map(pairs: Option<HashMap<String, String>>) -> HeaderMap {
+    let mut map = HeaderMap::new();
+    let Some(pairs) = pairs else { return map };
+    for (name, value) in pairs {
+        if !ALLOWED_HEADERS.contains(&name.to_ascii_lowercase().as_str()) {
+            continue;
+        }
+        let (Ok(name), Ok(value)) = (HeaderName::from_bytes(name.as_bytes()), HeaderValue::from_str(&value)) else {
+            continue;
+        };
+        map.insert(name, value);
+    }
+    map
+}
+
+/// Checks a URL's size, Range-request support and preferred file name before a
+/// download starts, so the UI can show them without guessing.
 #[tauri::command]
-async fn probe_url(state: State<'_, EngineState>, url: String) -> Result<ProbeResult, String> {
+async fn probe_url(state: State<'_, EngineState>, url: String, headers: Option<HashMap<String, String>>) -> Result<ProbeResult, String> {
     let client = state.client()?;
-    let info = probe(&client, &url).await.map_err(|e| e.to_string())?;
+    let info = probe(&client, &url, &to_header_map(headers)).await.map_err(|e| e.to_string())?;
     Ok(ProbeResult {
         total_size: info.total_size,
         supports_range: info.supports_range,
+        suggested_filename: info.suggested_filename,
     })
 }
 
@@ -132,6 +175,7 @@ async fn start_download(
     limit: Option<String>,
     retries: Option<u32>,
     allow_resume: Option<bool>,
+    headers: Option<HashMap<String, String>>,
 ) -> Result<JobResult, String> {
     let output: PathBuf = output.map(PathBuf::from).unwrap_or_else(|| guess_filename(&url));
     let max_bytes_per_sec = limit.as_deref().filter(|l| !l.is_empty()).map(parse_rate).transpose()?;
@@ -145,6 +189,7 @@ async fn start_download(
         global_limiter: Some(state.limiter.clone()),
         max_retries: retries.unwrap_or(5),
         allow_resume: allow_resume.unwrap_or(true),
+        headers: to_header_map(headers),
         ..Default::default()
     };
 
@@ -335,6 +380,9 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             app.manage(EngineState::default());
+            // The listener itself stays down until the UI restores its setting
+            // and asks for it; this only makes the state available.
+            app.manage(bridge::BridgeState::default());
             setup_tray(app.handle())?;
             Ok(())
         })
@@ -361,6 +409,8 @@ pub fn run() {
             set_global_speed_limit,
             set_user_agent,
             quit_app,
+            bridge::bridge_info,
+            bridge::set_bridge_enabled,
             persistence::load_app_state,
             persistence::save_app_state,
         ])

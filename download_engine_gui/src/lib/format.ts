@@ -26,6 +26,11 @@ export function nameFromUrl(url: string): string {
   }
 }
 
+/** Joins an output folder and a file name, however the folder was typed. */
+export function joinPath(dir: string, name: string): string {
+  return `${dir.replace(/[\\/]+$/, "")}\\${name}`;
+}
+
 /**
  * Inserts " (n)" before the extension until the path isn't taken.
  *

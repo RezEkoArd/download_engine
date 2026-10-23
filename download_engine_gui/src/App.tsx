@@ -5,11 +5,13 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 import "./App.css";
 import { CLIPBOARD_POLL_MS, SPEED_LIMIT_OPTIONS } from "./types";
-import type { AppSettings, FileCategory, Job, JobResult, JobStatus, NewJobInput, ResumeInfo } from "./types";
-import { baseName, calculateEta, detectCategory, formatBytes, nameFromUrl, progressPercent, uniqueOutputPath } from "./lib/format";
+import type { AppSettings, FileCategory, Job, JobHeaders, JobResult, JobStatus, NewJobInput, ProbeResult, ResumeInfo } from "./types";
+import { baseName, calculateEta, detectCategory, formatBytes, joinPath, nameFromUrl, progressPercent, uniqueOutputPath } from "./lib/format";
 import { loadState, saveState } from "./lib/persistence";
 import { notifyDownloadComplete, notifyDownloadFailed } from "./lib/notifications";
 import { readClipboardText } from "./lib/jobActions";
+import { setBridgeEnabled } from "./lib/bridge";
+import { defaultDownloadDir } from "./lib/paths";
 import { dragHasText, extractUrls, findByUrl, isHttpUrl } from "./lib/urls";
 import NewDownloadModal from "./components/NewDownloadModal";
 import SettingsModal from "./components/SettingsModal";
@@ -25,6 +27,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   maxRetries: 5,
   userAgent: "",
   clipboardMonitor: false,
+  browserBridge: false,
 };
 
 const STATUS_FILTERS: { key: "all" | JobStatus; label: string; icon: string }[] = [
@@ -146,6 +149,41 @@ function statusBadge(job: Job) {
   }
 }
 
+/**
+ * Folds a probe result into a job: its size, whether it can be segmented, and
+ * the file name the server would rather we used.
+ *
+ * The rename is deliberately narrow, and skipped when:
+ * - the user named the file themselves — their choice outranks the server's;
+ * - there is no output folder, since the engine then derives the name from the
+ *   URL itself and the label has to keep matching what it will write;
+ * - the download is no longer merely queued, because by then the engine has
+ *   created and preallocated the file at the old path and the bytes are landing
+ *   there. Renaming the job would only lose track of the file.
+ *
+ * `uniqueOutputPath` still applies, so a suggestion that happens to land on
+ * another job's target gets a " (1)" instead of two jobs writing one file.
+ *
+ * A failed probe is not treated as "no Range support unknown": it reports
+ * `supportsRange: false`, which is what the old inline handler did.
+ */
+function applyProbe(job: Job, result: ProbeResult | null, outputDir: string, otherPaths: ReadonlySet<string>): Job {
+  if (!result) return { ...job, supportsRange: false };
+
+  const probed: Job = { ...job, sizeBytes: result.total_size || job.sizeBytes, supportsRange: result.supports_range };
+
+  const suggested = result.suggested_filename;
+  if (!suggested || job.nameFromUser || !outputDir || job.status !== "queued" || job.downloadedBytes > 0) return probed;
+
+  // Safe to join: the engine has already reduced this to a single path
+  // component, so it cannot climb out of `outputDir`.
+  const outputPath = uniqueOutputPath(joinPath(outputDir, suggested), otherPaths);
+  if (outputPath === job.outputPath) return probed;
+
+  const name = baseName(outputPath);
+  return { ...probed, outputPath, name, category: detectCategory(name) };
+}
+
 function App() {
   const [dark, setDark] = useState(true);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -170,6 +208,17 @@ function App() {
   const [notice, setNotice] = useState("");
   /** Link spotted in the clipboard, waiting to be accepted or dismissed. */
   const [clipboardUrl, setClipboardUrl] = useState("");
+  /**
+   * Per-job request headers, kept out of `jobs` on purpose.
+   *
+   * These arrive from the browser extension and contain session cookies.
+   * `jobs` is written to `app-state.json` as plain text, so putting them there
+   * would mean parking live credentials on disk for as long as the job row
+   * survives. Holding them in memory means a bridge job that outlives a
+   * restart retries without its cookie and fails — which is the honest
+   * outcome: the user re-sends it from the browser and gets a fresh one.
+   */
+  const jobHeadersRef = useRef<Map<string, JobHeaders>>(new Map());
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
@@ -185,12 +234,22 @@ function App() {
   useEffect(() => {
     let active = true;
     loadState()
-      .then((saved) => {
-        if (!active || !saved) return;
-        if (typeof saved.dark === "boolean") setDark(saved.dark);
-        if (saved.settings) setSettings({ ...DEFAULT_SETTINGS, ...saved.settings });
-        if (typeof saved.globalLimit === "string") setGlobalLimit(saved.globalLimit);
-        if (saved.jobs) setJobs(saved.jobs);
+      .then(async (saved) => {
+        if (!active) return;
+        if (typeof saved?.dark === "boolean") setDark(saved.dark);
+        if (typeof saved?.globalLimit === "string") setGlobalLimit(saved.globalLimit);
+        if (saved?.jobs) setJobs(saved.jobs);
+
+        const restoredSettings = { ...DEFAULT_SETTINGS, ...saved?.settings };
+        // An empty output dir means files land in the process working
+        // directory, which is wherever the app happened to be launched from —
+        // effectively "lost". Fill it in on first run instead.
+        if (!restoredSettings.defaultOutputDir) {
+          const fallback = await defaultDownloadDir();
+          if (!active) return;
+          restoredSettings.defaultOutputDir = fallback;
+        }
+        setSettings(restoredSettings);
       })
       .finally(() => {
         if (active) setRestored(true);
@@ -265,6 +324,7 @@ function App() {
           segments: job.segments,
           limit: job.limit || null,
           retries: settings.maxRetries,
+          headers: jobHeadersRef.current.get(job.id) ?? null,
         });
         setJobs((prev) =>
           prev.map((j) => {
@@ -297,12 +357,17 @@ function App() {
     beginJob(next);
   }, [jobs, settings.concurrency, beginJob]);
 
-  async function probeUrlFor(id: string, url: string) {
+  async function probeJob(job: Job): Promise<ProbeResult | null> {
     try {
-      const result = await invoke<{ total_size: number; supports_range: boolean }>("probe_url", { url });
-      setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, sizeBytes: result.total_size || j.sizeBytes, supportsRange: result.supports_range } : j)));
+      // The probe needs the same headers the download will use: without the
+      // cookie, a gated link answers about a login page and the size shown
+      // would describe the wrong response entirely.
+      return await invoke<ProbeResult>("probe_url", {
+        url: job.url,
+        headers: jobHeadersRef.current.get(job.id) ?? null,
+      });
     } catch {
-      setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, supportsRange: false } : j)));
+      return null;
     }
   }
 
@@ -311,15 +376,26 @@ function App() {
    * between synchronous calls, so the caller threads one growing set through
    * them instead of re-reading state that is still stale.
    */
-  function handleCreateJob(input: NewJobInput, takenPaths?: Set<string>) {
+  function handleCreateJob(input: NewJobInput, takenPaths?: Set<string>, headers?: JobHeaders) {
     const id = crypto.randomUUID();
+    // Registered before the probe fires, since that is the first request to go
+    // out and it needs them too.
+    if (headers && Object.keys(headers).length > 0) jobHeadersRef.current.set(id, headers);
     const outputDir = input.outputPath || settings.defaultOutputDir;
     const taken = takenPaths ?? new Set(jobs.map((j) => j.outputPath).filter(Boolean));
-    const outputPath = outputDir ? uniqueOutputPath(`${outputDir.replace(/[\\/]+$/, "")}\\${nameFromUrl(input.url)}`, taken) : "";
+    // A name the user typed is confined to a file name — a path they entered
+    // here would otherwise nest the file somewhere other than the folder shown
+    // right above it in the form.
+    const typedName = baseName(input.fileName);
+    // The URL name is only a placeholder when the user left the name blank:
+    // the probe replaces it with the server's own, which is the whole point for
+    // a link like "/download?id=84213".
+    const fileName = typedName || nameFromUrl(input.url);
+    const outputPath = outputDir ? uniqueOutputPath(joinPath(outputDir, fileName), taken) : "";
     if (outputPath) taken.add(outputPath);
-    // Without a folder the engine picks the file name itself, so fall back to
-    // the URL for the label.
-    const name = outputPath ? baseName(outputPath) : nameFromUrl(input.url);
+    // Without a folder the engine picks the file name itself, so the label
+    // falls back to the name we derived rather than a path.
+    const name = outputPath ? baseName(outputPath) : fileName;
     const baseJob: Job = {
       id,
       url: input.url,
@@ -336,21 +412,52 @@ function App() {
       error: null,
       createdAt: Date.now(),
       lastTick: null,
+      nameFromUser: typedName.length > 0,
     };
 
-    const addAndMaybeStart = () => {
+    const addAndMaybeStart = async () => {
+      // The probe gets to decide the final name, and starting the download
+      // settles it for good — the engine creates and preallocates the output
+      // file, and a rename after that would just lose track of it. So the
+      // scheduler is held off until the probe has answered, using the same
+      // latch it already honours. Taken before the job is visible to it.
+      startingRef.current.add(id);
       setJobs((prev) => [baseJob, ...prev]);
-      probeUrlFor(baseJob.id, baseJob.url);
-      if (input.forceStart) {
-        startingRef.current.add(baseJob.id);
-        beginJob(baseJob);
+      const result = await probeJob(baseJob);
+
+      // Removed while the probe was in flight: nothing left to correct, and
+      // re-adding it through `setJobs` would resurrect a deleted row.
+      if (!jobsRef.current.some((j) => j.id === id)) {
+        startingRef.current.delete(id);
+        return;
       }
+
+      // `jobsRef` rather than `jobs`: this runs a network round trip after the
+      // render that added the job, so the ref is current where the closed-over
+      // `jobs` is a snapshot from before it existed.
+      const current = jobsRef.current.find((j) => j.id === id) ?? baseJob;
+      const otherPaths = new Set(
+        jobsRef.current
+          .filter((j) => j.id !== id)
+          .map((j) => j.outputPath)
+          .filter(Boolean),
+      );
+      const probed = applyProbe(current, result, outputDir, otherPaths);
+
+      // Released before the state update, not after: the scheduler re-checks on
+      // the render that update triggers, and a hold still set at that point
+      // would leave the job sitting in the queue with nothing left to wake it.
+      if (!input.forceStart) startingRef.current.delete(id);
+      setJobs((prev) => prev.map((j) => (j.id === id ? probed : j)));
+      // Handed the probed job, so the engine is told the corrected path rather
+      // than the URL-derived one it has just replaced.
+      if (input.forceStart) beginJob(probed);
     };
 
     if (input.startInSec > 0) {
-      window.setTimeout(addAndMaybeStart, input.startInSec * 1000);
+      window.setTimeout(() => void addAndMaybeStart(), input.startInSec * 1000);
     } else {
-      addAndMaybeStart();
+      void addAndMaybeStart();
     }
   }
 
@@ -434,6 +541,7 @@ function App() {
       await invoke("discard_download", { output: job.outputPath }).catch(() => {});
     }
     setJobs((prev) => prev.filter((j) => j.id !== id));
+    jobHeadersRef.current.delete(id);
     if (inspectedId === id) setInspectedId(null);
   }
 
@@ -512,6 +620,9 @@ function App() {
           {
             url,
             outputPath: "",
+            // A dropped batch is never reviewed, so there is no name to take
+            // from the user; the server's own is the best one available.
+            fileName: "",
             segments: settings.defaultSegments,
             limit: settings.defaultLimit,
             startInSec: 0,
@@ -605,6 +716,65 @@ function App() {
       window.clearInterval(timer);
     };
   }, [settings.clipboardMonitor, newDownloadOpen]);
+
+  // Opening a port follows the setting, including turning it back off again.
+  // A failure flips the switch back rather than leaving the UI claiming the
+  // bridge is up while nothing is listening.
+  useEffect(() => {
+    if (!restored) return;
+    let active = true;
+    setBridgeEnabled(settings.browserBridge).catch((err) => {
+      if (!active || !settings.browserBridge) return;
+      setSettings((prev) => ({ ...prev, browserBridge: false }));
+      setNotice(`Bridge browser gagal dijalankan: ${err}`);
+    });
+    return () => {
+      active = false;
+    };
+  }, [restored, settings.browserBridge]);
+
+  // Links handed over by the extension. Routed through a ref for the same
+  // reason the drop handler is: the listener must not re-subscribe on every
+  // progress tick.
+  const bridgeDownloadRef = useRef<(url: string, headers: JobHeaders) => void>(() => {});
+  useEffect(() => {
+    bridgeDownloadRef.current = (url, headers) => {
+      if (!isHttpUrl(url)) return;
+      const existing = findByUrl(jobs, url);
+      if (existing) {
+        setNotice(`Link dari browser sudah ada di daftar: ${existing.name}`);
+        return;
+      }
+      handleCreateJob(
+        {
+          url,
+          outputPath: "",
+          // The extension deliberately sends no name — see its README. The
+          // server's `Content-Disposition`, sanitised by the engine, is what
+          // fills the gap for a link whose URL carries no usable name.
+          fileName: "",
+          segments: settings.defaultSegments,
+          limit: settings.defaultLimit,
+          startInSec: 0,
+          // Queued, not force-started: the scheduler begins it right away if a
+          // slot is free, and respects the concurrency limit if not.
+          forceStart: false,
+        },
+        undefined,
+        headers,
+      );
+      setNotice(`Ditambahkan dari browser: ${nameFromUrl(url)}`);
+    };
+  });
+
+  useEffect(() => {
+    const unlisten = listen<{ url: string; headers: JobHeaders }>("bridge-download", (event) => {
+      bridgeDownloadRef.current(event.payload.url, event.payload.headers ?? {});
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
 
   const filteredJobs = useMemo(() => {
     const q = search.toLowerCase();
@@ -1192,6 +1362,7 @@ function App() {
         <NewDownloadModal
           defaultSegments={settings.defaultSegments}
           defaultLimit={settings.defaultLimit}
+          defaultOutputDir={settings.defaultOutputDir}
           initialUrl={pendingUrl}
           duplicateOf={(url) => findByUrl(jobs, url)}
           onClose={closeNewDownload}
