@@ -28,3 +28,4 @@ serde_json = "1"
 download_engine = { path = "../../download_engine" }
 reqwest = { version = "0.13", features = ["stream"] }
 tauri-plugin-single-instance = "2.5.4"
+tauri-plugin-clipboard-manager = "2.5.0"

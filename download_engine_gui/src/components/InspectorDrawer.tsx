@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Job, SegmentProgress } from "../types";
 import { formatBytes, progressPercent } from "../lib/format";
+import { copyToClipboard, revealInFolder } from "../lib/jobActions";
 
 interface Props {
   job: Job;
@@ -13,6 +14,26 @@ const LIVE_STATUSES = ["downloading", "paused"];
 export default function InspectorDrawer({ job, onClose }: Props) {
   const pct = progressPercent(job);
   const [segments, setSegments] = useState<SegmentProgress[]>([]);
+  const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null);
+
+  // The engine pre-allocates the file when a job starts, so anything that has
+  // run has something on disk to reveal. A queued job has nothing yet.
+  const fileExists = Boolean(job.outputPath) && job.status !== "queued";
+
+  async function runAction(message: string, action: () => Promise<void>) {
+    try {
+      await action();
+      setFeedback({ ok: true, message });
+    } catch (err) {
+      setFeedback({ ok: false, message: String(err) });
+    }
+  }
+
+  useEffect(() => {
+    if (!feedback) return;
+    const timer = window.setTimeout(() => setFeedback(null), 2200);
+    return () => window.clearTimeout(timer);
+  }, [feedback]);
 
   // The engine tracks segments in shared memory rather than emitting an event
   // per chunk, so poll it at a rate a human can actually read.
@@ -37,9 +58,11 @@ export default function InspectorDrawer({ job, onClose }: Props) {
     };
   }, [job.id, job.status]);
 
-  // A fresh job shouldn't show the previous one's segments.
+  // A fresh job shouldn't show the previous one's segments, nor a confirmation
+  // that was meant for it.
   useEffect(() => {
     setSegments([]);
+    setFeedback(null);
   }, [job.id]);
 
   return (
@@ -57,6 +80,50 @@ export default function InspectorDrawer({ job, onClose }: Props) {
         <div>
           <div className="font-semibold text-gray-900 dark:text-gray-100 truncate text-sm">{job.name}</div>
           <div className="text-[11px] text-gray-400 truncate font-mono mt-0.5">{job.url}</div>
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="grid grid-cols-3 gap-1.5">
+            <button
+              onClick={() => runAction("Folder dibuka", () => revealInFolder(job.outputPath))}
+              disabled={!fileExists}
+              title={fileExists ? "Tampilkan file di File Explorer" : "Belum ada file di disk untuk ditampilkan"}
+              className="flex flex-col items-center gap-1 py-2 rounded-lg border border-gray-200 dark:border-gray-700/60 bg-white dark:bg-darkbg-900 text-[10px] font-medium text-gray-600 dark:text-gray-300 transition hover:border-brand-500/40 hover:text-brand-600 dark:hover:text-brand-400 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-gray-200 dark:disabled:hover:border-gray-700/60 disabled:hover:text-gray-600"
+            >
+              <i className="fa-regular fa-folder-open text-sm" />
+              <span>Buka Folder</span>
+            </button>
+            <button
+              onClick={() => runAction("Link dicopy", () => copyToClipboard(job.url))}
+              title="Copy URL download ke clipboard"
+              className="flex flex-col items-center gap-1 py-2 rounded-lg border border-gray-200 dark:border-gray-700/60 bg-white dark:bg-darkbg-900 text-[10px] font-medium text-gray-600 dark:text-gray-300 transition hover:border-brand-500/40 hover:text-brand-600 dark:hover:text-brand-400"
+            >
+              <i className="fa-solid fa-link text-sm" />
+              <span>Copy Link</span>
+            </button>
+            <button
+              onClick={() => runAction("Path dicopy", () => copyToClipboard(job.outputPath))}
+              disabled={!job.outputPath}
+              title={job.outputPath ? "Copy path file output ke clipboard" : "Job ini tidak punya path output eksplisit"}
+              className="flex flex-col items-center gap-1 py-2 rounded-lg border border-gray-200 dark:border-gray-700/60 bg-white dark:bg-darkbg-900 text-[10px] font-medium text-gray-600 dark:text-gray-300 transition hover:border-brand-500/40 hover:text-brand-600 dark:hover:text-brand-400 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-gray-200 dark:disabled:hover:border-gray-700/60 disabled:hover:text-gray-600"
+            >
+              <i className="fa-regular fa-clipboard text-sm" />
+              <span>Copy Path</span>
+            </button>
+          </div>
+
+          {feedback && (
+            <div
+              className={`flex items-start gap-1.5 rounded-lg px-2 py-1.5 text-[10px] border break-all ${
+                feedback.ok
+                  ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+                  : "bg-red-500/10 border-red-500/20 text-red-600 dark:text-red-400"
+              }`}
+            >
+              <i className={`mt-0.5 ${feedback.ok ? "fa-solid fa-circle-check" : "fa-solid fa-circle-exclamation"}`} />
+              <span>{feedback.message}</span>
+            </div>
+          )}
         </div>
 
         {job.supportsRange === null ? (

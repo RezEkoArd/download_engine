@@ -64,6 +64,22 @@ Tombol yang muncul menyesuaikan status:
 
 Soal **Delete**: job yang belum selesai ikut membuang file parsial dan sidecar-nya, karena file setengah jadi tidak ada gunanya dan bisa memakan puluhan GB. Job yang sudah **Completed** hanya hilang dari daftar — filenya milik kamu dan tidak disentuh.
 
+### Buka folder & copy link
+
+Klik baris job mana pun untuk membuka inspector. Di bawah nama file ada tiga aksi:
+
+| Aksi | Fungsi | Nonaktif saat |
+| --- | --- | --- |
+| **Buka Folder** | tampilkan file di File Explorer dengan filenya tersorot | job masih *queued*, jadi belum ada file di disk |
+| **Copy Link** | copy URL download ke clipboard | — |
+| **Copy Path** | copy path file output ke clipboard | job tidak punya path output eksplisit |
+
+Konfirmasi (atau pesan error) muncul sebentar di bawah tombolnya, lalu hilang sendiri.
+
+Aksi-aksi ini ditaruh di inspector, bukan di kolom Actions, karena kolom itu sudah menampung sampai enam tombol — menambah tiga lagi membuatnya melebihi lebar kolom.
+
+Tidak ada aksi "buka file" yang langsung menjalankan filenya. Itu butuh izin `opener:allow-open-path`, yang memberi webview kemampuan membuka **sembarang** path dengan aplikasi default-nya — terlalu luas untuk manfaat yang sudah bisa didapat dengan dua klik dari **Buka Folder**.
+
 ### Toolbar & sidebar
 
 - **Start All Queued** / **Pause All** — aksi borongan untuk semua job queued/downloading.
@@ -124,9 +140,10 @@ Frontend memegang daftar job; engine hanya tahu soal download yang sedang jalan.
 | `src/lib/format.ts` | format byte, ETA, deteksi kategori file dari nama |
 | `src/lib/persistence.ts` | load/save state + penandaan status *interrupted* |
 | `src/lib/notifications.ts` | notifikasi selesai/gagal, hasil cek izin di-cache |
+| `src/lib/jobActions.ts` | buka folder (reveal) + copy ke clipboard |
 | `src/components/NewDownloadModal.tsx` | form tambah download |
 | `src/components/SettingsModal.tsx` | form setting |
-| `src/components/InspectorDrawer.tsx` | panel progress per segmen |
+| `src/components/InspectorDrawer.tsx` | panel progress per segmen + aksi per job |
 | `src-tauri/src/lib.rs` | Tauri commands, tray, jembatan ke engine |
 | `src-tauri/src/persistence.rs` | baca/tulis `app-state.json` |
 
@@ -159,6 +176,7 @@ Entri tray yang bergantung pada daftar job dikirim sebagai event, bukan dikerjak
 | Tombol Continue mulai dari 0% | sidecar sudah tidak cocok (file di server berubah) atau server tidak mendukung Range | normal — satu-satunya cara aman adalah mengunduh ulang |
 | Notifikasi tidak muncul | izin notifikasi Windows ditolak | aktifkan di Settings Windows → Notifications |
 | Aplikasi hilang setelah ditekan X | memang disembunyikan ke tray, bukan ditutup | klik ikon tray, atau **Keluar** dari menu tray |
+| Tombol **Buka Folder** nonaktif | job masih *queued*, filenya belum dibuat | jalankan dulu job-nya |
 | Klik ikon aplikasi tidak membuka jendela baru | single-instance guard | jendela instance yang sudah jalan yang dimunculkan |
 
 ## Setup IDE
