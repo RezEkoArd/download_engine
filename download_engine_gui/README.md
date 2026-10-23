@@ -144,6 +144,21 @@ Pilihan selalu dijaga hanya berisi baris yang **sedang terlihat**. Job yang diha
 | Concurrency | berapa job boleh aktif bersamaan. Job *paused* tetap menghitung |
 | Max Retries | percobaan ulang per segmen sebelum job dinyatakan gagal |
 | User Agent | mengganti User-Agent. Berguna untuk server yang menolak client tak dikenal |
+| Pantau Clipboard | aktifkan clipboard monitor (default **mati**) |
+
+### Clipboard monitor
+
+Kalau diaktifkan di Settings, setiap kali kamu meng-copy link `http(s)` muncul kartu kecil di kanan bawah: **Download** membuka form dengan URL-nya sudah terisi, **Abaikan** menutupnya.
+
+Satu isi clipboard hanya ditawarkan sekali. Link yang sudah ada di daftar job tidak ditawarkan sama sekali — logika duplikat yang sama dengan form dipakai di sini.
+
+Pemantauan **dijeda selama form New Download terbuka**, supaya link yang kamu paste sendiri ke form itu tidak kembali muncul sebagai tawaran. Saat form ditutup, isi clipboard saat itu dijadikan baseline baru, bukan ditawarkan.
+
+Begitu juga saat monitor baru dinyalakan: bacaan pertama hanya dipakai sebagai baseline, jadi apa pun yang sudah lebih dulu ada di clipboard tidak langsung nongol.
+
+> **Kenapa default-nya mati.** Clipboard tidak punya event "berubah", jadi satu-satunya cara adalah membacanya berkala (tiap 1,5 detik) — dan itu berarti **semua** isi clipboard terbaca, termasuk password yang kebetulan sedang kamu copy dari password manager. Yang dilakukan aplikasi: teks dibaca, dicek apakah URL http(s), dan kalau bukan langsung dibuang dari memori. Tidak ditulis ke `app-state.json`, tidak dikirim ke jaringan, tidak di-log. Tetap saja, karena ini keputusan privasi dan bukan keputusan teknis, fitur ini harus kamu nyalakan sendiri.
+
+Permission `clipboard-manager:allow-read-text` hanya ada di capability karena fitur ini. Kalau kamu tidak memerlukannya, mencabut baris itu dari `src-tauri/capabilities/default.json` akan membuat pembacaan clipboard gagal di level Tauri, apa pun isi Settings.
 
 ### System tray
 
@@ -186,7 +201,7 @@ Frontend memegang daftar job; engine hanya tahu soal download yang sedang jalan.
 | `src/lib/format.ts` | format byte, ETA, deteksi kategori file, nama file anti-tabrakan |
 | `src/lib/persistence.ts` | load/save state + penandaan status *interrupted* |
 | `src/lib/notifications.ts` | notifikasi selesai/gagal, hasil cek izin di-cache |
-| `src/lib/jobActions.ts` | buka folder (reveal) + copy ke clipboard |
+| `src/lib/jobActions.ts` | buka folder (reveal), copy ke clipboard, baca clipboard |
 | `src/lib/urls.ts` | validasi URL http(s), normalisasi untuk cek duplikat, parsing payload drag-and-drop |
 | `src/components/NewDownloadModal.tsx` | form tambah download |
 | `src/components/SettingsModal.tsx` | form setting |

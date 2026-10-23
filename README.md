@@ -13,7 +13,14 @@ Engine sengaja berupa library, jadi GUI dan CLI berbagi logic download yang sama
 
 ## Setup Environment
 
-Butuh **Rust**, **Node.js**, dan **pnpm**.
+Butuh **Rust**, **Node.js 20+**, dan **pnpm**.
+
+Vite 8 memakai Rolldown, yang butuh API `node:util` yang baru ada di Node 20. Di Node 18 build-nya berhenti dengan `does not provide an export named 'styleText'` — pesannya tidak menyinggung versi Node sama sekali. Kalau pakai nvm, pastikan versinya dulu:
+
+```powershell
+nvm use 22
+node -v
+```
 
 Build Rust di Windows butuh linker C/C++. Kalau Visual Studio Build Tools (MSVC) belum ada, pakai toolchain **GNU**:
 
@@ -95,5 +102,5 @@ download_engine_gui/          # aplikasi desktop
 - [x] Multi-select job (bulk pause/cancel/retry)
 - [x] Drag-and-drop URL ke window
 - [x] Deteksi URL duplikat + nama file anti-tabrakan
-- [ ] Clipboard monitor (auto-detect link)
+- [x] Clipboard monitor (auto-detect link, opt-in)
 - [ ] Browser integration lewat Native Messaging

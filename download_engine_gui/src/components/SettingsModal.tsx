@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CLIPBOARD_POLL_MS } from "../types";
 import type { AppSettings } from "../types";
 
 interface Props {
@@ -15,6 +16,7 @@ export default function SettingsModal({ settings, onClose, onSave, onBrowse }: P
   const [concurrency, setConcurrency] = useState(settings.concurrency);
   const [maxRetries, setMaxRetries] = useState(settings.maxRetries);
   const [userAgent, setUserAgent] = useState(settings.userAgent);
+  const [clipboardMonitor, setClipboardMonitor] = useState(settings.clipboardMonitor);
 
   async function handleBrowse() {
     const picked = await onBrowse();
@@ -22,7 +24,7 @@ export default function SettingsModal({ settings, onClose, onSave, onBrowse }: P
   }
 
   function handleSave() {
-    onSave({ defaultSegments, defaultLimit, defaultOutputDir, concurrency, maxRetries, userAgent });
+    onSave({ defaultSegments, defaultLimit, defaultOutputDir, concurrency, maxRetries, userAgent, clipboardMonitor });
     onClose();
   }
 
@@ -114,6 +116,25 @@ export default function SettingsModal({ settings, onClose, onSave, onBrowse }: P
               className="w-full bg-gray-50 dark:bg-darkbg-900 border border-gray-300 dark:border-gray-700 rounded-lg p-2 font-mono text-[11px] dark:text-gray-100"
             />
             <span className="text-[10px] text-gray-400">Berlaku untuk download berikutnya, bukan yang sedang berjalan.</span>
+          </div>
+
+          <div className="pt-2 border-t border-gray-100 dark:border-gray-700/50">
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={clipboardMonitor}
+                onChange={(e) => setClipboardMonitor(e.currentTarget.checked)}
+                className="mt-0.5 accent-brand-500 w-3.5 h-3.5"
+              />
+              <span>
+                <span className="font-medium text-gray-700 dark:text-gray-300">Pantau Clipboard</span>
+                <span className="block text-[10px] text-gray-400 mt-0.5">
+                  Saat kamu meng-copy link http(s), aplikasi menawarkan untuk mengunduhnya. Isi clipboard dibaca tiap{" "}
+                  {CLIPBOARD_POLL_MS / 1000} detik dan langsung dibuang kalau bukan link — tidak disimpan, tidak dikirim ke mana pun. Matikan saja kalau
+                  kamu sering meng-copy data sensitif.
+                </span>
+              </span>
+            </label>
           </div>
 
           <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700/50">

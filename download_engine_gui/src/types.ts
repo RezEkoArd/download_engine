@@ -44,6 +44,8 @@ export interface AppSettings {
   concurrency: number;
   maxRetries: number;
   userAgent: string;
+  /** Watch the clipboard for links. Off by default — see the GUI README. */
+  clipboardMonitor: boolean;
 }
 
 /** Live per-segment progress, polled from the engine while a job runs. */
@@ -60,6 +62,12 @@ export interface ResumeInfo {
 }
 
 export type JobResult = { status: "completed"; path: string } | { status: "cancelled" };
+
+/**
+ * The clipboard has no change event, so it has to be polled. Shared with the
+ * settings copy, so what the user is told matches what actually happens.
+ */
+export const CLIPBOARD_POLL_MS = 1500;
 
 export const SPEED_LIMIT_OPTIONS = [
   { value: "", label: "Unlimited" },

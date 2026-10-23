@@ -13,6 +13,7 @@
     "dialog:default",
     "window-state:default",
     "notification:default",
-    "clipboard-manager:allow-write-text"
+    "clipboard-manager:allow-write-text",
+    "clipboard-manager:allow-read-text"
   ]
 }

@@ -4,12 +4,13 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 import "./App.css";
-import { SPEED_LIMIT_OPTIONS } from "./types";
+import { CLIPBOARD_POLL_MS, SPEED_LIMIT_OPTIONS } from "./types";
 import type { AppSettings, FileCategory, Job, JobResult, JobStatus, NewJobInput, ResumeInfo } from "./types";
 import { baseName, calculateEta, detectCategory, formatBytes, nameFromUrl, progressPercent, uniqueOutputPath } from "./lib/format";
 import { loadState, saveState } from "./lib/persistence";
 import { notifyDownloadComplete, notifyDownloadFailed } from "./lib/notifications";
-import { dragHasText, extractUrls, findByUrl } from "./lib/urls";
+import { readClipboardText } from "./lib/jobActions";
+import { dragHasText, extractUrls, findByUrl, isHttpUrl } from "./lib/urls";
 import NewDownloadModal from "./components/NewDownloadModal";
 import SettingsModal from "./components/SettingsModal";
 import InspectorDrawer from "./components/InspectorDrawer";
@@ -23,6 +24,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   concurrency: 1,
   maxRetries: 5,
   userAgent: "",
+  clipboardMonitor: false,
 };
 
 const STATUS_FILTERS: { key: "all" | JobStatus; label: string; icon: string }[] = [
@@ -166,6 +168,8 @@ function App() {
   const [pendingUrl, setPendingUrl] = useState("");
   /** Short-lived message for things that happen without a dialog open. */
   const [notice, setNotice] = useState("");
+  /** Link spotted in the clipboard, waiting to be accepted or dismissed. */
+  const [clipboardUrl, setClipboardUrl] = useState("");
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
@@ -561,6 +565,46 @@ function App() {
       window.removeEventListener("drop", onDrop);
     };
   }, []);
+
+  // Read inside the clipboard poll, which must not restart on every progress
+  // tick the way a `jobs` dependency would make it.
+  const jobsRef = useRef<Job[]>([]);
+  useEffect(() => {
+    jobsRef.current = jobs;
+  });
+
+  // Clipboard monitor. Opt-in, and everything read is discarded unless it's a
+  // link — nothing is stored and nothing leaves the process.
+  useEffect(() => {
+    // Pausing while the form is open keeps a link the user pastes in there
+    // themselves from bouncing back as a suggestion.
+    if (!settings.clipboardMonitor || newDownloadOpen) {
+      setClipboardUrl("");
+      return;
+    }
+
+    let cancelled = false;
+    let lastSeen: string | null = null;
+
+    const poll = async () => {
+      const text = (await readClipboardText()).trim();
+      if (cancelled || text === lastSeen) return;
+      const seeding = lastSeen === null;
+      lastSeen = text;
+      // Whatever was already copied before the monitor started isn't a new
+      // event, so the first read only establishes the baseline.
+      if (seeding) return;
+      if (!isHttpUrl(text) || findByUrl(jobsRef.current, text)) return;
+      setClipboardUrl(text);
+    };
+
+    void poll();
+    const timer = window.setInterval(() => void poll(), CLIPBOARD_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [settings.clipboardMonitor, newDownloadOpen]);
 
   const filteredJobs = useMemo(() => {
     const q = search.toLowerCase();
@@ -1106,13 +1150,41 @@ function App() {
         </div>
       )}
 
-      {notice && (
-        <div className="fixed bottom-6 right-6 z-[70] max-w-sm flex items-start gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-darkbg-800 px-4 py-3 shadow-2xl">
-          <i className="fa-solid fa-circle-info text-brand-500 mt-0.5" />
-          <span className="text-xs text-gray-700 dark:text-gray-200">{notice}</span>
-          <button onClick={() => setNotice("")} className="ml-1 text-gray-400 hover:text-gray-600 dark:hover:text-white">
-            <i className="fa-solid fa-xmark text-xs" />
-          </button>
+      {(clipboardUrl || notice) && (
+        <div className="fixed bottom-6 right-6 z-[70] w-80 flex flex-col gap-2">
+          {clipboardUrl && (
+            <div className="rounded-xl border border-brand-300 dark:border-brand-500/40 bg-white dark:bg-darkbg-800 shadow-2xl overflow-hidden">
+              <div className="px-4 pt-3 pb-2">
+                <div className="flex items-center gap-2 text-xs font-semibold text-gray-800 dark:text-gray-100">
+                  <i className="fa-solid fa-clipboard text-brand-500" /> Link terdeteksi di clipboard
+                </div>
+                <div className="mt-1.5 text-[11px] font-mono text-gray-500 dark:text-gray-400 break-all line-clamp-3">{clipboardUrl}</div>
+              </div>
+              <div className="flex justify-end gap-2 px-4 py-2 bg-gray-50 dark:bg-darkbg-900/50 border-t border-gray-100 dark:border-gray-700">
+                <button
+                  onClick={() => setClipboardUrl("")}
+                  className="px-3 py-1 rounded-lg text-[11px] font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+                >
+                  Abaikan
+                </button>
+                <button
+                  onClick={() => openNewDownload(clipboardUrl)}
+                  className="px-3 py-1 rounded-lg text-[11px] font-medium text-white bg-brand-600 hover:bg-brand-700 transition shadow"
+                >
+                  Download
+                </button>
+              </div>
+            </div>
+          )}
+          {notice && (
+            <div className="flex items-start gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-darkbg-800 px-4 py-3 shadow-2xl">
+              <i className="fa-solid fa-circle-info text-brand-500 mt-0.5" />
+              <span className="flex-1 text-xs text-gray-700 dark:text-gray-200">{notice}</span>
+              <button onClick={() => setNotice("")} className="text-gray-400 hover:text-gray-600 dark:hover:text-white">
+                <i className="fa-solid fa-xmark text-xs" />
+              </button>
+            </div>
+          )}
         </div>
       )}
 
