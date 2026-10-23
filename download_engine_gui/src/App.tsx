@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { open } from "@tauri-apps/plugin-dialog";
+import { confirm, open } from "@tauri-apps/plugin-dialog";
 import "./App.css";
 import { SPEED_LIMIT_OPTIONS } from "./types";
 import type { AppSettings, FileCategory, Job, JobResult, JobStatus, NewJobInput, ResumeInfo } from "./types";
@@ -44,6 +44,9 @@ const CATEGORY_FILTERS: { key: "all" | FileCategory; label: string; icon: string
 ];
 
 const ACTIVE_STATUSES: JobStatus[] = ["downloading", "paused"];
+
+/** Stopped one way or another, so there is something to re-queue. */
+const RETRYABLE_STATUSES: JobStatus[] = ["error", "cancelled", "completed", "interrupted"];
 
 /** Longest a change may sit unsaved while downloads keep firing progress events. */
 const SAVE_INTERVAL_MS = 3000;
@@ -154,6 +157,9 @@ function App() {
   const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
   const startingRef = useRef<Set<string>>(new Set());
   const [restored, setRestored] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  /** Anchor for shift-click range selection. */
+  const lastClickedRef = useRef<string | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
@@ -461,6 +467,110 @@ function App() {
     });
   }, [jobs, statusFilter, categoryFilter, search]);
 
+  // Selection is kept to what's actually on screen. Without this, a job could
+  // stay selected after being deleted or filtered out of view, and a bulk
+  // action would then hit something the user can't see.
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const visible = new Set(filteredJobs.map((j) => j.id));
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (visible.has(id)) next.add(id);
+      });
+      // Same contents means same state; returning a new Set would re-render
+      // on every progress tick.
+      return next.size === prev.size ? prev : next;
+    });
+  }, [filteredJobs]);
+
+  function toggleSelect(id: string, shiftKey: boolean) {
+    const ids = filteredJobs.map((j) => j.id);
+    const to = ids.indexOf(id);
+    const from = lastClickedRef.current ? ids.indexOf(lastClickedRef.current) : -1;
+    const next = new Set(selectedIds);
+
+    if (shiftKey && from !== -1 && to !== -1) {
+      // Extend in the direction the clicked row is heading, the way file
+      // managers do, rather than replacing the whole selection.
+      const selecting = !selectedIds.has(id);
+      const [start, end] = from < to ? [from, to] : [to, from];
+      for (let i = start; i <= end; i++) {
+        if (selecting) next.add(ids[i]);
+        else next.delete(ids[i]);
+      }
+    } else if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+
+    lastClickedRef.current = id;
+    setSelectedIds(next);
+  }
+
+  function toggleSelectAll() {
+    const allSelected = filteredJobs.length > 0 && filteredJobs.every((j) => selectedIds.has(j.id));
+    lastClickedRef.current = null;
+    setSelectedIds(allSelected ? new Set() : new Set(filteredJobs.map((j) => j.id)));
+  }
+
+  function clearSelection() {
+    lastClickedRef.current = null;
+    setSelectedIds(new Set());
+  }
+
+  const selectedJobs = useMemo(() => jobs.filter((j) => selectedIds.has(j.id)), [jobs, selectedIds]);
+
+  // Each bulk action only touches the jobs it actually applies to, so a mixed
+  // selection does the sensible thing instead of erroring on the rest.
+  const bulk = useMemo(
+    () => ({
+      resumable: selectedJobs.filter((j) => j.status === "paused"),
+      pausable: selectedJobs.filter((j) => j.status === "downloading"),
+      stoppable: selectedJobs.filter((j) => ACTIVE_STATUSES.includes(j.status)),
+      retryable: selectedJobs.filter((j) => RETRYABLE_STATUSES.includes(j.status)),
+    }),
+    [selectedJobs],
+  );
+
+  async function bulkResume() {
+    await Promise.all(bulk.resumable.map((j) => resumeJob(j.id)));
+  }
+
+  async function bulkPause() {
+    await Promise.all(bulk.pausable.map((j) => pauseJob(j.id)));
+  }
+
+  async function bulkCancel() {
+    await Promise.all(bulk.stoppable.map((j) => cancelJob(j.id)));
+  }
+
+  async function bulkRetry() {
+    await Promise.all(bulk.retryable.map((j) => retryJob(j.id)));
+  }
+
+  /**
+   * Removing in bulk can throw away a lot of partial data at once, so unlike
+   * the per-row delete this one asks first and says how much is at stake.
+   */
+  async function bulkRemove() {
+    const withPartials = selectedJobs.filter((j) => j.status !== "completed" && j.outputPath).length;
+    const warning = withPartials > 0 ? `\n\n${withPartials} di antaranya masih punya file parsial yang akan ikut dibuang.` : "";
+    const confirmed = await confirm(`Hapus ${selectedJobs.length} job dari daftar?${warning}`, {
+      title: "Hapus job terpilih",
+      kind: "warning",
+    });
+    if (!confirmed) return;
+
+    // Sequential: each removal may cancel a download and delete files, and
+    // firing all of them at once gains nothing.
+    for (const job of selectedJobs) {
+      await removeJob(job.id);
+    }
+    clearSelection();
+  }
+
   const counts = useMemo(
     () => ({
       all: jobs.length,
@@ -480,6 +590,7 @@ function App() {
   const inspectedJob = jobs.find((j) => j.id === inspectedId) ?? null;
   const activeCount = counts.downloading + counts.paused;
   const globalLimitLabel = SPEED_LIMIT_OPTIONS.find((o) => o.value === globalLimit)?.label ?? globalLimit;
+  const allVisibleSelected = filteredJobs.length > 0 && filteredJobs.every((j) => selectedIds.has(j.id));
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-gray-100 dark:bg-darkbg-900 text-gray-800 dark:text-gray-100 text-sm">
@@ -594,6 +705,56 @@ function App() {
         </div>
       </div>
 
+      {/* Bulk action bar — only while something is selected */}
+      {selectedIds.size > 0 && (
+        <div className="bg-brand-500/10 border-b border-brand-500/20 px-4 py-2 flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="font-semibold text-brand-700 dark:text-brand-300 mr-1">{selectedIds.size} dipilih</span>
+          <div className="h-4 w-[1px] bg-brand-500/30 mx-1" />
+
+          <button
+            onClick={bulkResume}
+            disabled={bulk.resumable.length === 0}
+            className="px-2.5 py-1 rounded-md flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition"
+          >
+            <i className="fa-solid fa-play" /> Lanjutkan {bulk.resumable.length > 0 && `(${bulk.resumable.length})`}
+          </button>
+          <button
+            onClick={bulkPause}
+            disabled={bulk.pausable.length === 0}
+            className="px-2.5 py-1 rounded-md flex items-center gap-1.5 font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition"
+          >
+            <i className="fa-solid fa-pause" /> Jeda {bulk.pausable.length > 0 && `(${bulk.pausable.length})`}
+          </button>
+          <button
+            onClick={bulkCancel}
+            disabled={bulk.stoppable.length === 0}
+            className="px-2.5 py-1 rounded-md flex items-center gap-1.5 font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition"
+          >
+            <i className="fa-solid fa-stop" /> Batalkan {bulk.stoppable.length > 0 && `(${bulk.stoppable.length})`}
+          </button>
+          <button
+            onClick={bulkRetry}
+            disabled={bulk.retryable.length === 0}
+            className="px-2.5 py-1 rounded-md flex items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-500/10 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition"
+          >
+            <i className="fa-solid fa-rotate-right" /> Ulangi {bulk.retryable.length > 0 && `(${bulk.retryable.length})`}
+          </button>
+
+          <div className="h-4 w-[1px] bg-brand-500/30 mx-1" />
+
+          <button
+            onClick={bulkRemove}
+            className="px-2.5 py-1 rounded-md flex items-center gap-1.5 font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10 transition"
+          >
+            <i className="fa-solid fa-trash-can" /> Hapus ({selectedIds.size})
+          </button>
+
+          <button onClick={clearSelection} className="ml-auto px-2.5 py-1 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-500/10 transition">
+            Bersihkan pilihan
+          </button>
+        </div>
+      )}
+
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
@@ -670,6 +831,20 @@ function App() {
             <table className="w-full text-left border-collapse">
               <thead className="bg-gray-50 dark:bg-darkbg-800/80 sticky top-0 z-10 border-b border-gray-200 dark:border-gray-700/80 text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold select-none">
                 <tr>
+                  <th className="py-2.5 pl-4 pr-0 w-8">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      // Partial selection reads as neither on nor off.
+                      ref={(el) => {
+                        if (el) el.indeterminate = selectedIds.size > 0 && !allVisibleSelected;
+                      }}
+                      onChange={toggleSelectAll}
+                      disabled={filteredJobs.length === 0}
+                      title="Pilih semua yang terlihat"
+                      className="accent-brand-500 w-3.5 h-3.5 cursor-pointer disabled:cursor-not-allowed"
+                    />
+                  </th>
                   <th className="py-2.5 px-4">File Name</th>
                   <th className="py-2.5 px-3 w-28">Size</th>
                   <th className="py-2.5 px-3 w-32">Status</th>
@@ -693,6 +868,17 @@ function App() {
                       onClick={() => setInspectedId(job.id)}
                       className={`hover:bg-gray-50 dark:hover:bg-darkbg-800/50 transition cursor-pointer ${inspectedId === job.id ? "bg-brand-500/5 dark:bg-brand-500/10" : ""}`}
                     >
+                      <td className="py-3 pl-4 pr-0" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(job.id)}
+                          // onClick, not onChange: only the mouse event carries
+                          // the shift key needed for range selection.
+                          onClick={(e) => toggleSelect(job.id, e.shiftKey)}
+                          onChange={() => {}}
+                          className="accent-brand-500 w-3.5 h-3.5 cursor-pointer"
+                        />
+                      </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center space-x-3">
                           <div className="p-2 rounded-lg bg-gray-100 dark:bg-darkbg-800 text-gray-500 dark:text-gray-400">

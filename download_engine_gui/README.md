@@ -80,6 +80,21 @@ Aksi-aksi ini ditaruh di inspector, bukan di kolom Actions, karena kolom itu sud
 
 Tidak ada aksi "buka file" yang langsung menjalankan filenya. Itu butuh izin `opener:allow-open-path`, yang memberi webview kemampuan membuka **sembarang** path dengan aplikasi default-nya — terlalu luas untuk manfaat yang sudah bisa didapat dengan dua klik dari **Buka Folder**.
 
+### Aksi borongan (multi-select)
+
+Centang kolom paling kiri untuk memilih beberapa job sekaligus:
+
+- **Checkbox di header** memilih/melepas semua baris yang sedang terlihat. Kalau pilihannya sebagian, checkbox-nya tampil *indeterminate*.
+- **Shift+klik** memilih satu rentang sekaligus, seperti di file manager.
+
+Begitu ada yang dipilih, muncul bar aksi berisi **Lanjutkan**, **Jeda**, **Batalkan**, **Ulangi**, dan **Hapus**.
+
+Angka di tiap tombol menunjukkan berapa job yang benar-benar terkena aksi itu, dan tombolnya nonaktif kalau tidak ada yang cocok. Jadi memilih campuran status tetap aman: **Jeda** hanya menyentuh yang *downloading*, **Lanjutkan** hanya yang *paused*, dan sisanya dibiarkan — bukan error.
+
+**Hapus** minta konfirmasi lebih dulu, berbeda dari tombol hapus per baris, dan menyebutkan berapa job yang masih punya file parsial yang akan ikut dibuang. Menghapus banyak job sekaligus bisa membuang data jauh lebih banyak daripada sekali klik yang tidak sengaja.
+
+Pilihan selalu dijaga hanya berisi baris yang **sedang terlihat**. Job yang dihapus atau tersaring keluar oleh filter/pencarian otomatis lepas dari pilihan, supaya aksi borongan tidak pernah mengenai sesuatu yang tidak kamu lihat di layar.
+
 ### Toolbar & sidebar
 
 - **Start All Queued** / **Pause All** — aksi borongan untuk semua job queued/downloading.
@@ -177,6 +192,7 @@ Entri tray yang bergantung pada daftar job dikirim sebagai event, bukan dikerjak
 | Notifikasi tidak muncul | izin notifikasi Windows ditolak | aktifkan di Settings Windows → Notifications |
 | Aplikasi hilang setelah ditekan X | memang disembunyikan ke tray, bukan ditutup | klik ikon tray, atau **Keluar** dari menu tray |
 | Tombol **Buka Folder** nonaktif | job masih *queued*, filenya belum dibuat | jalankan dulu job-nya |
+| Pilihan hilang sendiri saat filter diubah | memang disengaja — pilihan dijaga hanya berisi baris yang terlihat | pilih ulang setelah filternya pas |
 | Klik ikon aplikasi tidak membuka jendela baru | single-instance guard | jendela instance yang sudah jalan yang dimunculkan |
 
 ## Setup IDE

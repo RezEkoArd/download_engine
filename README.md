@@ -92,7 +92,7 @@ download_engine_gui/          # aplikasi desktop
 - [x] Notifikasi sistem saat download selesai/gagal
 - [x] System tray (close ke tray, download tetap jalan)
 - [x] Aksi buka folder / copy link per job
-- [ ] Multi-select job (bulk pause/cancel/retry)
+- [x] Multi-select job (bulk pause/cancel/retry)
 - [ ] Drag-and-drop URL ke window
 - [ ] Deteksi URL duplikat
 - [ ] Clipboard monitor (auto-detect link)
