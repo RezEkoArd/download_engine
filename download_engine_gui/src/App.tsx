@@ -8,6 +8,7 @@ import { SPEED_LIMIT_OPTIONS } from "./types";
 import type { AppSettings, FileCategory, Job, JobResult, JobStatus, NewJobInput, ResumeInfo } from "./types";
 import { calculateEta, detectCategory, formatBytes, nameFromUrl, progressPercent } from "./lib/format";
 import { loadState, saveState } from "./lib/persistence";
+import { notifyDownloadComplete, notifyDownloadFailed } from "./lib/notifications";
 import NewDownloadModal from "./components/NewDownloadModal";
 import SettingsModal from "./components/SettingsModal";
 import InspectorDrawer from "./components/InspectorDrawer";
@@ -252,8 +253,10 @@ function App() {
             return { ...j, status: "completed", outputPath: result.path, downloadedBytes: j.sizeBytes || j.downloadedBytes, speedBytes: 0 };
           }),
         );
+        if (result.status === "completed") notifyDownloadComplete(job.name);
       } catch (err) {
         setJobs((prev) => prev.map((j) => (j.id === job.id ? { ...j, status: "error", error: String(err), speedBytes: 0 } : j)));
+        notifyDownloadFailed(job.name, String(err));
       } finally {
         startingRef.current.delete(job.id);
       }
