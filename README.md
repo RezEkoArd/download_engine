@@ -94,6 +94,6 @@ download_engine_gui/          # aplikasi desktop
 - [x] Aksi buka folder / copy link per job
 - [x] Multi-select job (bulk pause/cancel/retry)
 - [x] Drag-and-drop URL ke window
-- [ ] Deteksi URL duplikat
+- [x] Deteksi URL duplikat + nama file anti-tabrakan
 - [ ] Clipboard monitor (auto-detect link)
 - [ ] Browser integration lewat Native Messaging

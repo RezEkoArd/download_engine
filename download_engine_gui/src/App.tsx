@@ -6,10 +6,10 @@ import { confirm, open } from "@tauri-apps/plugin-dialog";
 import "./App.css";
 import { SPEED_LIMIT_OPTIONS } from "./types";
 import type { AppSettings, FileCategory, Job, JobResult, JobStatus, NewJobInput, ResumeInfo } from "./types";
-import { calculateEta, detectCategory, formatBytes, nameFromUrl, progressPercent } from "./lib/format";
+import { baseName, calculateEta, detectCategory, formatBytes, nameFromUrl, progressPercent, uniqueOutputPath } from "./lib/format";
 import { loadState, saveState } from "./lib/persistence";
 import { notifyDownloadComplete, notifyDownloadFailed } from "./lib/notifications";
-import { dragHasText, extractUrls } from "./lib/urls";
+import { dragHasText, extractUrls, findByUrl } from "./lib/urls";
 import NewDownloadModal from "./components/NewDownloadModal";
 import SettingsModal from "./components/SettingsModal";
 import InspectorDrawer from "./components/InspectorDrawer";
@@ -164,10 +164,18 @@ function App() {
   const [dragActive, setDragActive] = useState(false);
   /** Seeds the new-download form when a link is dropped onto the window. */
   const [pendingUrl, setPendingUrl] = useState("");
+  /** Short-lived message for things that happen without a dialog open. */
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
   }, [dark]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 4000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   // Pull the last session back in before anything else touches state.
   useEffect(() => {
@@ -294,11 +302,20 @@ function App() {
     }
   }
 
-  function handleCreateJob(input: NewJobInput) {
+  /**
+   * `takenPaths` lets a batch stay collision-free: `jobs` doesn't update
+   * between synchronous calls, so the caller threads one growing set through
+   * them instead of re-reading state that is still stale.
+   */
+  function handleCreateJob(input: NewJobInput, takenPaths?: Set<string>) {
     const id = crypto.randomUUID();
-    const name = nameFromUrl(input.url);
     const outputDir = input.outputPath || settings.defaultOutputDir;
-    const outputPath = outputDir ? `${outputDir.replace(/[\\/]+$/, "")}\\${name}` : "";
+    const taken = takenPaths ?? new Set(jobs.map((j) => j.outputPath).filter(Boolean));
+    const outputPath = outputDir ? uniqueOutputPath(`${outputDir.replace(/[\\/]+$/, "")}\\${nameFromUrl(input.url)}`, taken) : "";
+    if (outputPath) taken.add(outputPath);
+    // Without a folder the engine picks the file name itself, so fall back to
+    // the URL for the label.
+    const name = outputPath ? baseName(outputPath) : nameFromUrl(input.url);
     const baseJob: Job = {
       id,
       url: input.url,
@@ -482,15 +499,28 @@ function App() {
         openNewDownload(urls[0]);
         return;
       }
-      urls.forEach((url) =>
-        handleCreateJob({
-          url,
-          outputPath: "",
-          segments: settings.defaultSegments,
-          limit: settings.defaultLimit,
-          startInSec: 0,
-          forceStart: false,
-        }),
+      // Nobody reviews a batch, so duplicates are dropped silently rather than
+      // queued twice; the count is reported instead.
+      const fresh = urls.filter((url) => !findByUrl(jobs, url));
+      const taken = new Set(jobs.map((j) => j.outputPath).filter(Boolean));
+      fresh.forEach((url) =>
+        handleCreateJob(
+          {
+            url,
+            outputPath: "",
+            segments: settings.defaultSegments,
+            limit: settings.defaultLimit,
+            startInSec: 0,
+            forceStart: false,
+          },
+          taken,
+        ),
+      );
+      const skipped = urls.length - fresh.length;
+      setNotice(
+        skipped === 0
+          ? `${fresh.length} link ditambahkan ke queue`
+          : `${fresh.length} link ditambahkan, ${skipped} dilewati karena sudah ada di daftar`,
       );
     };
   });
@@ -1076,11 +1106,22 @@ function App() {
         </div>
       )}
 
+      {notice && (
+        <div className="fixed bottom-6 right-6 z-[70] max-w-sm flex items-start gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-darkbg-800 px-4 py-3 shadow-2xl">
+          <i className="fa-solid fa-circle-info text-brand-500 mt-0.5" />
+          <span className="text-xs text-gray-700 dark:text-gray-200">{notice}</span>
+          <button onClick={() => setNotice("")} className="ml-1 text-gray-400 hover:text-gray-600 dark:hover:text-white">
+            <i className="fa-solid fa-xmark text-xs" />
+          </button>
+        </div>
+      )}
+
       {newDownloadOpen && (
         <NewDownloadModal
           defaultSegments={settings.defaultSegments}
           defaultLimit={settings.defaultLimit}
           initialUrl={pendingUrl}
+          duplicateOf={(url) => findByUrl(jobs, url)}
           onClose={closeNewDownload}
           onSubmit={(input) => {
             handleCreateJob(input);

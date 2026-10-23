@@ -6,6 +6,8 @@ interface Props {
   defaultLimit: string;
   /** Pre-filled when the modal was opened by dropping a link onto the window. */
   initialUrl?: string;
+  /** Existing job for this URL, so the form can warn before it's submitted. */
+  duplicateOf: (url: string) => { name: string; status: string } | undefined;
   onClose: () => void;
   onSubmit: (input: NewJobInput) => void;
   onBrowse: () => Promise<string | null>;
@@ -18,12 +20,16 @@ const LIMIT_OPTIONS = [
   { value: "10MB", label: "10 MB/s" },
 ];
 
-export default function NewDownloadModal({ defaultSegments, defaultLimit, initialUrl = "", onClose, onSubmit, onBrowse }: Props) {
+export default function NewDownloadModal({ defaultSegments, defaultLimit, initialUrl = "", duplicateOf, onClose, onSubmit, onBrowse }: Props) {
   const [url, setUrl] = useState(initialUrl);
   const [outputPath, setOutputPath] = useState("");
   const [segments, setSegments] = useState(defaultSegments);
   const [limit, setLimit] = useState(defaultLimit);
   const [startInSec, setStartInSec] = useState(0);
+
+  // Only a warning, never a block: re-downloading a link whose file changed on
+  // the server is a legitimate thing to want.
+  const duplicate = url.trim() ? duplicateOf(url) : undefined;
 
   async function handleBrowse() {
     const picked = await onBrowse();
@@ -70,6 +76,15 @@ export default function NewDownloadModal({ defaultSegments, defaultLimit, initia
               placeholder="https://example.com/large-file.zip"
               className="w-full bg-gray-50 dark:bg-darkbg-900 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand-500 dark:text-gray-100"
             />
+            {duplicate && (
+              <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 px-3 py-2">
+                <i className="fa-solid fa-triangle-exclamation text-amber-500 mt-0.5" />
+                <div className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-200">
+                  Link ini sudah ada di daftar: <span className="font-semibold">{duplicate.name}</span> ({duplicate.status}). Kalau diteruskan, file
+                  akan disimpan terpisah, bukan menimpa yang lama.
+                </div>
+              </div>
+            )}
           </div>
 
           <div>

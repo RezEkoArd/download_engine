@@ -37,6 +37,24 @@ Ada dua tombol dengan arti berbeda:
 
 Begitu job ditambahkan, URL-nya langsung di-probe untuk mengambil ukuran file dan dukungan Range request, jadi kolom Size terisi sebelum download mulai.
 
+### Link duplikat & tabrakan nama file
+
+Saat URL di form sudah ada di daftar, peringatan kuning muncul di bawah field URL berisi nama dan status job yang lama.
+
+Peringatannya **tidak memblokir**: mengunduh ulang link yang file-nya sudah berubah di server itu kebutuhan yang sah, jadi keputusannya diserahkan ke user. Yang dijamin aplikasi adalah file lama tidak ditimpa.
+
+Perbandingannya memakai bentuk URL yang sudah dinormalkan:
+
+| Dianggap sama | Dianggap beda |
+| --- | --- |
+| scheme & host beda huruf besar/kecil (`HTTP://Example.com` = `http://example.com`) | path beda huruf besar/kecil — path itu case-sensitive |
+| port default ditulis eksplisit (`https://a:443/x` = `https://a/x`) | query string beda — sering jadi pembeda file (token, versi, id) |
+| cuma beda fragment `#...` — bagian itu tidak pernah dikirim ke server | |
+
+Terpisah dari itu, dua job tidak akan pernah menulis ke file yang sama. Kalau path tujuan sudah dipakai job lain, ` (1)`, ` (2)`, dan seterusnya disisipkan sebelum ekstensi — seperti perilaku browser. Ini juga menangani kasus dua URL berbeda yang kebetulan nama filenya sama, yang kalau dibiarkan akan membuat dua job saling menimpa byte dan merusak kedua file.
+
+> Pengaman nama file ini hanya aktif kalau folder tujuan diketahui (dari form atau *Default Output Dir*). Tanpa folder, engine yang menentukan nama file sendiri dan frontend tidak bisa memeriksanya lebih dulu — satu alasan lagi untuk mengisi *Default Output Dir*.
+
 ### Drag-and-drop link
 
 Tarik link dari browser (atau teks berisi URL) ke mana saja di jendela aplikasi. Overlay muncul saat drag masuk, dan yang terjadi setelah dilepas tergantung jumlahnya:
@@ -45,6 +63,8 @@ Tarik link dari browser (atau teks berisi URL) ke mana saja di jendela aplikasi.
 - **Beberapa link** → semuanya langsung masuk queue dengan default dari Settings, karena form itu cuma bisa menampung satu URL.
 
 Hanya `http` dan `https` yang diterima; skema lain diabaikan. URL yang sama di satu drop di-*dedupe*, karena menarik blok teks berisi link yang berulang itu hal biasa.
+
+Link yang sudah ada di daftar tidak ikut masuk; jumlah yang dilewati muncul sebagai notifikasi kecil di kanan bawah.
 
 > **Menarik file tidak diterima.** Agar drag-and-drop HTML5 bisa jalan di WebView2, handler drag-drop bawaan Tauri harus dimatikan (`dragDropEnabled: false` di `tauri.conf.json`) — dan konsekuensinya aplikasi tidak lagi menerima event file-drop level OS. Saat menarik file, kursor akan menampilkan tanda "tidak boleh". Ini pertukaran yang disengaja: fiturnya memang untuk link, bukan file.
 
@@ -163,11 +183,11 @@ Frontend memegang daftar job; engine hanya tahu soal download yang sedang jalan.
 | --- | --- |
 | `src/App.tsx` | state daftar job, scheduler concurrency, filter, listener event |
 | `src/types.ts` | `Job`, `AppSettings`, `JobStatus`, dan kawan-kawan |
-| `src/lib/format.ts` | format byte, ETA, deteksi kategori file dari nama |
+| `src/lib/format.ts` | format byte, ETA, deteksi kategori file, nama file anti-tabrakan |
 | `src/lib/persistence.ts` | load/save state + penandaan status *interrupted* |
 | `src/lib/notifications.ts` | notifikasi selesai/gagal, hasil cek izin di-cache |
 | `src/lib/jobActions.ts` | buka folder (reveal) + copy ke clipboard |
-| `src/lib/urls.ts` | validasi URL http(s) + parsing payload drag-and-drop |
+| `src/lib/urls.ts` | validasi URL http(s), normalisasi untuk cek duplikat, parsing payload drag-and-drop |
 | `src/components/NewDownloadModal.tsx` | form tambah download |
 | `src/components/SettingsModal.tsx` | form setting |
 | `src/components/InspectorDrawer.tsx` | panel progress per segmen + aksi per job |

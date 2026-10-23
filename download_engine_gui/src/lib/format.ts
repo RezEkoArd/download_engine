@@ -26,6 +26,35 @@ export function nameFromUrl(url: string): string {
   }
 }
 
+/**
+ * Inserts " (n)" before the extension until the path isn't taken.
+ *
+ * Two jobs aimed at one file would write over each other's bytes, so a
+ * collision has to be resolved before the job is created — the same thing a
+ * browser does when you download one file twice.
+ */
+export function uniqueOutputPath(path: string, taken: ReadonlySet<string>): string {
+  if (!path || !taken.has(path)) return path;
+  const slash = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
+  const dot = path.lastIndexOf(".");
+  // The dot has to sit inside the file name and not start it, otherwise
+  // ".gitignore" would be treated as an extension with an empty name.
+  const hasExt = dot > slash + 1;
+  const stem = hasExt ? path.slice(0, dot) : path;
+  const ext = hasExt ? path.slice(dot) : "";
+  // Bounded: at worst every taken path blocks exactly one candidate.
+  for (let n = 1; n <= taken.size; n += 1) {
+    const candidate = `${stem} (${n})${ext}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+  return `${stem} (${taken.size + 1})${ext}`;
+}
+
+/** File name part of a path, for keeping the displayed name in sync with it. */
+export function baseName(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+}
+
 export function calculateEta(job: Job): string {
   if (job.status !== "downloading" || job.speedBytes <= 0 || job.sizeBytes <= 0) return "-";
   const remaining = job.sizeBytes - job.downloadedBytes;

@@ -8,6 +8,32 @@ export function isHttpUrl(value: string): boolean {
   }
 }
 
+/**
+ * A comparable form of a URL, for telling two jobs apart.
+ *
+ * `URL` already lowercases the scheme and host, drops a default port, and
+ * resolves `..`. The fragment is cleared by hand because nothing after `#` is
+ * ever sent to the server, so two links differing only there fetch the same
+ * bytes. Path and query are left alone: both are case-sensitive, and the query
+ * is often what identifies the file (token, version, id).
+ */
+export function normalizeUrl(value: string): string {
+  const trimmed = value.trim();
+  try {
+    const u = new URL(trimmed);
+    u.hash = "";
+    return u.href;
+  } catch {
+    return trimmed;
+  }
+}
+
+/** The first item already pointing at the same URL, if any. */
+export function findByUrl<T extends { url: string }>(items: readonly T[], url: string): T | undefined {
+  const target = normalizeUrl(url);
+  return items.find((item) => normalizeUrl(item.url) === target);
+}
+
 /** Drag payloads that could plausibly hold a URL. */
 const URL_MIME_TYPES = ["text/uri-list", "text/plain"];
 
