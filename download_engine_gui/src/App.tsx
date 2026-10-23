@@ -417,11 +417,39 @@ function App() {
     return typeof selected === "string" ? selected : null;
   }
 
-  /** Flushes pending changes, since closing kills the throttled save. */
+  /**
+   * Parks the app in the tray rather than ending it, so downloads survive.
+   * Still flushes first, so the saved state matches what the user last saw.
+   */
   async function closeWindow() {
     if (restored) await saveState({ dark, globalLimit, settings, jobs });
     await appWindow.close();
   }
+
+  /** The real exit, reached from the tray. Nothing else will flush after this. */
+  async function quitApp() {
+    if (restored) await saveState({ dark, globalLimit, settings, jobs });
+    await invoke("quit_app").catch(() => {});
+  }
+
+  // Tray entries act on the job list, which lives here rather than in the
+  // engine. Routing them through a ref keeps the listeners pinned to the
+  // latest handlers without re-subscribing on every progress tick.
+  const trayActions = useRef({ startAll: () => {}, pauseAll: () => {}, quit: async () => {} });
+  useEffect(() => {
+    trayActions.current = { startAll: startAllQueued, pauseAll: pauseAllRunning, quit: quitApp };
+  });
+
+  useEffect(() => {
+    const unlisten = Promise.all([
+      listen("tray-start-all", () => trayActions.current.startAll()),
+      listen("tray-pause-all", () => trayActions.current.pauseAll()),
+      listen("tray-quit", () => void trayActions.current.quit()),
+    ]);
+    return () => {
+      unlisten.then((fns) => fns.forEach((fn) => fn()));
+    };
+  }, []);
 
   const filteredJobs = useMemo(() => {
     const q = search.toLowerCase();
@@ -478,7 +506,11 @@ function App() {
           <button onClick={() => appWindow.toggleMaximize()} className="hover:bg-gray-300 dark:hover:bg-gray-700 px-2 py-1 rounded transition text-gray-500 hover:text-gray-900 dark:hover:text-white">
             <i className="fa-regular fa-square" />
           </button>
-          <button onClick={closeWindow} className="hover:bg-red-500 hover:text-white px-2 py-1 rounded transition text-gray-500">
+          <button
+            onClick={closeWindow}
+            className="hover:bg-red-500 hover:text-white px-2 py-1 rounded transition text-gray-500"
+            title="Sembunyikan ke tray — download tetap jalan. Keluar sepenuhnya dari menu tray."
+          >
             <i className="fa-solid fa-xmark" />
           </button>
         </div>

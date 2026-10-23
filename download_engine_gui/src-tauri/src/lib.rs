@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use download_engine::{
@@ -7,7 +8,9 @@ use download_engine::{
     DownloadOutcome, ResumeState, SharedRateLimiter,
 };
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 
 mod persistence;
 
@@ -51,6 +54,9 @@ struct EngineState {
     jobs: Mutex<HashMap<String, DownloadHandle>>,
     limiter: SharedRateLimiter,
     user_agent: Mutex<Option<String>>,
+    /// Set once the user picks "Keluar", so closing the window really exits
+    /// instead of hiding to the tray again.
+    quitting: AtomicBool,
 }
 
 impl EngineState {
@@ -239,16 +245,108 @@ fn set_user_agent(state: State<'_, EngineState>, user_agent: Option<String>) -> 
     Ok(())
 }
 
+/// Shuts the app down for real. The UI calls this from the tray's "Keluar"
+/// after it has flushed its state, since closing the window only hides it.
+#[tauri::command]
+fn quit_app(app: AppHandle, state: State<'_, EngineState>) {
+    state.quitting.store(true, Ordering::SeqCst);
+    app.exit(0);
+}
+
+/// Brings the main window back from the tray. Also un-minimises it, since a
+/// hidden-while-minimised window would otherwise reappear on the taskbar only.
+fn reveal_main_window(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
+}
+
+/// Builds the tray icon. Menu entries that depend on job state are forwarded to
+/// the UI as events, because the job list lives there and not in `EngineState`.
+fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
+    let show = MenuItem::with_id(app, "show", "Tampilkan Jendela", true, None::<&str>)?;
+    let start_all = MenuItem::with_id(app, "start-all", "Mulai Semua", true, None::<&str>)?;
+    let pause_all = MenuItem::with_id(app, "pause-all", "Jeda Semua", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Keluar", true, None::<&str>)?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &show,
+            &PredefinedMenuItem::separator(app)?,
+            &start_all,
+            &pause_all,
+            &PredefinedMenuItem::separator(app)?,
+            &quit,
+        ],
+    )?;
+
+    let mut builder = TrayIconBuilder::with_id("main")
+        .tooltip("Download Engine")
+        .menu(&menu)
+        // Left click belongs to show/hide; the menu stays on right click.
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show" => reveal_main_window(app),
+            "start-all" => {
+                let _ = app.emit("tray-start-all", ());
+            }
+            "pause-all" => {
+                let _ = app.emit("tray-pause-all", ());
+            }
+            "quit" => {
+                let _ = app.emit("tray-quit", ());
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                reveal_main_window(tray.app_handle());
+            }
+        });
+
+    if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone());
+    }
+    builder.build(app)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Closing to the tray makes it easy to think the app has exited and
+        // launch it again; a second instance would fight the first one over
+        // the saved job list, so re-launching just surfaces the running one.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            reveal_main_window(app);
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             app.manage(EngineState::default());
+            setup_tray(app.handle())?;
             Ok(())
+        })
+        // Closing the window parks the app in the tray so downloads keep
+        // running; only the tray's "Keluar" actually exits.
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                let app = window.app_handle();
+                if !app.state::<EngineState>().quitting.load(Ordering::SeqCst) {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             probe_url,
@@ -261,6 +359,7 @@ pub fn run() {
             segment_progress,
             set_global_speed_limit,
             set_user_agent,
+            quit_app,
             persistence::load_app_state,
             persistence::save_app_state,
         ])
