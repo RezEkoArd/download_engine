@@ -8,6 +8,7 @@ Satu repo, dua crate yang digabung lewat Cargo workspace:
 | --- | --- | --- |
 | `download_engine` | Core engine + CLI. Segmented download, pause/resume/cancel, resume lintas sesi, bandwidth limiter, queue | [download_engine/README.md](download_engine/README.md) |
 | `download_engine_gui` | Aplikasi desktop (Tauri 2 + React 19). Memakai `download_engine` sebagai library, bukan memanggil CLI-nya | [download_engine_gui/README.md](download_engine_gui/README.md) |
+| `bridge_guard` | Cek otorisasi bridge browser (`Origin`, token, pembuatan token). Dipisah supaya bisa di-unit-test — lihat [Menjalankan tes](#menjalankan-tes) | — |
 
 Engine sengaja berupa library, jadi GUI dan CLI berbagi logic download yang sama tanpa duplikasi.
 
@@ -16,6 +17,26 @@ Di luar workspace Cargo ada satu komponen lagi:
 | Folder | Isi | Dokumentasi |
 | --- | --- | --- |
 | `browser-extension` | Extension Chrome/Edge (MV3). Menu klik-kanan yang mengirim link ke aplikasi lewat bridge loopback-nya | [browser-extension/README.md](browser-extension/README.md) |
+
+## Untuk Pengguna
+
+Belum ada rilis siap-pakai, jadi installer-nya dibangun sendiri sekali. Setelah itu aplikasinya terpasang seperti aplikasi Windows biasa dan tidak butuh toolchain lagi untuk dijalankan.
+
+Siapkan dulu [Setup Environment](#setup-environment) di bawah, lalu:
+
+```powershell
+cd download_engine_gui
+pnpm install
+pnpm tauri build
+```
+
+Hasilnya ada di `target/release/bundle/` — installer NSIS (`.exe`) dan MSI, karena `tauri.conf.json` memakai `"targets": "all"`. Jalankan salah satunya; keduanya memasang aplikasi yang sama.
+
+> Build release memakai `lto = true` dan `codegen-units = 1`, jadi ini jauh lebih lama daripada `pnpm tauri dev` — hitungan belasan menit, bukan detik. Untuk sekadar mencoba, `pnpm tauri dev` lebih cepat.
+
+Setelah terpasang, yang perlu dibaca cuma satu dokumen: **[Panduan Penggunaan di README GUI](download_engine_gui/README.md#panduan-penggunaan)** — menambah download, status job, aksi borongan, Settings, tray, clipboard monitor, dan bridge browser semuanya di situ. Kalau ada yang berperilaku aneh, [Troubleshooting](download_engine_gui/README.md#troubleshooting) di README yang sama memuat gejala beserta penyebabnya.
+
+Mau kirim link langsung dari browser? Pasang extension-nya: [browser-extension/README.md](browser-extension/README.md) — ada langkah pairing token di situ, dan itu wajib sekali di awal karena bridge menolak permintaan tanpa token.
 
 ## Setup Environment
 
@@ -67,12 +88,31 @@ Flag `-p` wajib karena workspace ini punya lebih dari satu binary — tanpa itu 
 
 ## Cek sebelum commit
 
-Rust dan frontend dicek terpisah; keduanya perlu lewat:
+Rust dan frontend dicek terpisah; ketiganya perlu lewat:
 
 ```powershell
-cargo check --workspace
+cargo check --workspace --all-targets
+cargo test --workspace
 cd download_engine_gui; pnpm exec tsc --noEmit
 ```
+
+Kalau `cargo check` selesai tanpa satu pun baris `Checking`/`Compiling`, berarti tidak ada yang di-rebuild dan pengecekannya tidak membuktikan apa-apa — `Finished` saja bukan tanda lulus.
+
+## Menjalankan tes
+
+```powershell
+cargo test --workspace
+```
+
+Saat ini ada 21 tes: 15 di `download_engine/src/filename.rs` (sanitasi nama file dari server) dan 6 di `bridge_guard` (batas otorisasi bridge).
+
+### Tes tidak boleh ditaruh di crate `download_engine_gui`
+
+Crate itu disetel `test = false` di `Cargo.toml`-nya, dan itu bukan kelalaian. Menautkan Tauri memunculkan import statis `TaskDialogIndirect` — API milik Common Controls **v6**, sementara `comctl32.dll` di `System32` adalah v5.82. Symbol itu hanya bisa di-resolve lewat manifest aplikasi, dan manifest tersebut ditanam hanya ke target **binary** (`embed_resource::compile` memancarkan `cargo:rustc-link-arg-bins`). Harness `cargo test --lib` adalah exe tanpa manifest, jadi Windows mematikannya dengan `STATUS_ENTRYPOINT_NOT_FOUND` (`0xc0000139`) **sebelum** satu tes pun jalan — bahkan `--list` ikut gagal.
+
+Gejalanya menyesatkan: terlihat seperti masalah DLL, padahal menyalin `WebView2Loader.dll` atau menambah `target/debug` ke PATH hanya menukar error antara `0xC0000135` dan `0xC0000139`. Ini juga **bukan** disebabkan `crate-type = ["staticlib", "cdylib", "rlib"]`, dan **MSVC akan gagal sama saja** karena `rustc-link-arg-bins` adalah direktif Cargo, bukan fitur linker.
+
+Jadi logika yang perlu diuji ditaruh di crate yang tidak menautkan Tauri — itulah alasan `bridge_guard` ada. Taruh tes baru di situ.
 
 ## Struktur
 
@@ -88,6 +128,7 @@ download_engine/              # core engine + CLI
 
 download_engine_gui/          # aplikasi desktop
   src/                        # frontend React
+  bridge_guard/src/lib.rs     # cek Origin + token bridge (crate terpisah supaya bisa dites)
   src-tauri/src/lib.rs        # Tauri commands, tray, jembatan ke engine
   src-tauri/src/bridge.rs     # listener HTTP loopback untuk extension browser
   src-tauri/src/persistence.rs# baca/tulis app-state.json

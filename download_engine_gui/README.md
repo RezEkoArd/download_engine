@@ -197,6 +197,24 @@ Settings juga menampilkan **token pairing**: tempelkan ke halaman opsi extension
 
 Endpoint-nya dua: `GET /ping` (untuk membedakan "app tidak jalan" dari "app jalan tapi belum pairing") dan `POST /download` dengan body `{"url": "...", "headers": {...}}`. Body dibatasi 64 KB. URL wajib `http`/`https` — engine sendiri mau menerima string apa pun, jadi pembatasan skema di sini yang mencegah pemanggil luar mengarahkannya ke `file://`.
 
+Respons lengkapnya, kalau kamu menulis client sendiri:
+
+| Permintaan | Balasan |
+| --- | --- |
+| Token tidak ada / salah / beda panjang | `401 {"error":"invalid token"}` |
+| `Origin` berupa `http(s)://` atau `null` | `403 {"error":"origin not allowed"}` |
+| `OPTIONS` dari origin extension, **tanpa** token | `204`, dengan `Access-Control-Allow-Origin` di-echo |
+| `OPTIONS` dari halaman web | `403` — preflight tidak jadi celah |
+| `GET /ping` + token benar | `200 {"app":"download-engine","version":"…"}` |
+| `POST /download` + URL bukan `http(s)` atau JSON rusak | `400` |
+| Body > 64 KiB | `413 {"error":"body too large"}` |
+| Path lain, atau method yang tidak cocok | `404 {"error":"not found"}` |
+| `POST /download` yang sah | `202 {"ok":true}` |
+
+`Access-Control-Allow-Origin` hanya di-echo untuk origin extension — permintaan yang ditolak tidak mendapatkannya sama sekali, jadi tidak ada iframe yang bisa memanen preflight yang berfungsi. `Vary: origin` selalu dikirim supaya cache tidak menyajikan respons satu extension ke extension lain.
+
+Preflight dijawab **sebelum** token diperiksa, dan itu memang harus begitu: preflight adalah cara browser menanyakan apakah ia boleh mengirim header token, jadi ia tidak mungkin sudah membawanya.
+
 Tes manual tanpa extension:
 
 ```powershell
@@ -263,6 +281,7 @@ Frontend memegang daftar job; engine hanya tahu soal download yang sedang jalan.
 | `src/lib/bridge.ts` | wrapper command bridge (info + on/off) |
 | `src-tauri/src/lib.rs` | Tauri commands, tray, jembatan ke engine |
 | `src-tauri/src/bridge.rs` | listener HTTP loopback untuk extension browser |
+| `bridge_guard/src/lib.rs` | cek `Origin`, perbandingan token, pembuatan token — crate terpisah tanpa dependensi Tauri, satu-satunya tempat tes bisa jalan (lihat [Menjalankan tes](../README.md#menjalankan-tes)) |
 | `src-tauri/src/persistence.rs` | baca/tulis `app-state.json` |
 
 ### Tauri commands
