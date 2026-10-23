@@ -104,7 +104,7 @@ Kalau `cargo check` selesai tanpa satu pun baris `Checking`/`Compiling`, berarti
 cargo test --workspace
 ```
 
-Saat ini ada 21 tes: 15 di `download_engine/src/filename.rs` (sanitasi nama file dari server) dan 6 di `bridge_guard` (batas otorisasi bridge).
+Saat ini ada 33 tes: 15 di `download_engine/src/filename.rs` (sanitasi nama file dari server), 12 di `download_engine/src/downloader.rs` (pembacaan hasil probe dan pembagian potongan range), dan 6 di `bridge_guard` (batas otorisasi bridge).
 
 ### Tes tidak boleh ditaruh di crate `download_engine_gui`
 
@@ -141,6 +141,9 @@ browser-extension/            # extension Chrome/Edge (MV3)
 ## Status Fitur
 
 - [x] Segmented download (HTTP Range) + fallback single connection
+- [x] Tiap segmen diminta dalam potongan 8 MiB, bukan satu range raksasa — server yang membatasi ukuran range (Google Drive menolak di atas ~32 MiB) tetap terlayani
+- [x] Probe jatuh ke `GET Range: bytes=0-0` kalau HEAD tidak informatif atau gagal
+- [x] Segmen menolak balasan selain 206, jadi halaman error tidak pernah ditulis sebagai isi file
 - [x] Retry per segmen dengan backoff
 - [x] Bandwidth limiter per file dan global
 - [x] Queue multi-file + penjadwalan

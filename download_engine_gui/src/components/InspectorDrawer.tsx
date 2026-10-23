@@ -126,7 +126,12 @@ export default function InspectorDrawer({ job, onClose }: Props) {
           )}
         </div>
 
-        {job.supportsRange === null ? (
+        {/* A failed job never got a usable answer about range support, so
+            `supportsRange === false` here means "unknown", not "unsupported".
+            Showing the amber "Range Tidak Didukung" panel beside the real error
+            invents a server capability we never observed and sends the reader
+            after the wrong cause. The error below says what actually happened. */}
+        {job.error ? null : job.supportsRange === null ? (
           <div className="bg-gray-500/10 border border-gray-500/20 rounded-lg p-2.5 flex items-start space-x-2">
             <i className="fa-solid fa-circle-notch fa-spin text-gray-400 mt-0.5 text-xs" />
             <div className="text-xs text-gray-500 dark:text-gray-400">Probing server...</div>

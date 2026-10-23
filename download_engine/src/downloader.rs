@@ -72,7 +72,7 @@ impl Default for DownloadOptions {
     }
 }
 
-/// What a HEAD request told us about the target.
+/// What the server told us about the target, without downloading it.
 #[derive(Debug, Clone, Default)]
 pub struct ProbeInfo {
     pub total_size: u64,
@@ -92,6 +92,26 @@ pub struct ProbeInfo {
 
 /// How often the partial download's progress is checkpointed to disk.
 const CHECKPOINT_INTERVAL: Duration = Duration::from_secs(2);
+
+/// Largest byte range asked for in a single request.
+///
+/// A segment is fetched as a run of these rather than as one range spanning the
+/// whole segment. Some servers cap how much they will serve per request and
+/// answer anything larger with an error page instead of a 206 — Google Drive
+/// refuses past roughly 32 MiB on a quota-limited file — which splitting a
+/// 1 GiB file into eight 128 MiB ranges walks straight into.
+///
+/// It also narrows what a dropped connection costs: a stall rewinds to the last
+/// completed slice, not to the start of a segment.
+const MAX_RANGE_CHUNK: u64 = 8 * 1024 * 1024;
+
+/// Inclusive end of the next slice to request, starting at `start`.
+///
+/// Never past `segment_end` — the segments must not overlap, or they would
+/// write over each other's bytes.
+fn chunk_end(start: u64, segment_end: u64) -> u64 {
+    segment_end.min(start.saturating_add(MAX_RANGE_CHUNK - 1))
+}
 
 #[derive(Debug, Clone, Copy)]
 struct ByteRange {
@@ -334,34 +354,85 @@ fn spawn_checkpointer(handle: &DownloadHandle, opts: &DownloadOptions, info: &Pr
 /// without the caller's cookies can answer about a login page instead of the
 /// file, and the whole download would then be planned around the wrong size.
 pub async fn probe(client: &Client, url: &str, extra_headers: &HeaderMap) -> Result<ProbeInfo> {
-    let resp = client
-        .head(url)
-        .headers(extra_headers.clone())
-        .send()
-        .await
-        .context("HEAD request failed")?;
-    if !resp.status().is_success() {
-        bail!("server returned {} for HEAD request", resp.status());
+    let head = client.head(url).headers(extra_headers.clone()).send().await;
+
+    let from_head = match &head {
+        Ok(resp) if resp.status().is_success() => Some(probe_info_from_headers(resp.headers(), None)),
+        _ => None,
+    };
+
+    // A HEAD answer is kept only when it actually describes the file. Servers
+    // that answer HEAD with a stub — no size, no `Accept-Ranges` — are common,
+    // and Google Drive goes further: it answers HEAD and plain GET with an
+    // HTML quota page while serving the real bytes to a ranged GET. Believing
+    // the stub drops us to one unresumable connection and, worse, downloads
+    // that error page as if it were the file.
+    if let Some(info) = &from_head {
+        if info.total_size > 0 && info.supports_range {
+            return Ok(from_head.expect("checked by the `if let` above"));
+        }
     }
 
-    let headers = resp.headers();
+    // So ask the way the segments themselves will. A 206 answers both questions
+    // at once and leaves no room for interpretation: the server demonstrably
+    // honoured a range, and `Content-Range` carries the total size. One byte of
+    // body is a cheaper price than a corrupt download.
+    let ranged = client
+        .get(url)
+        .headers(extra_headers.clone())
+        .header(reqwest::header::RANGE, "bytes=0-0")
+        .send()
+        .await;
+
+    if let Ok(resp) = &ranged {
+        if resp.status() == reqwest::StatusCode::PARTIAL_CONTENT {
+            return Ok(probe_info_from_headers(resp.headers(), Some(resp.status())));
+        }
+    }
+
+    // Neither request proved range support. A usable HEAD answer still beats
+    // failing outright — a small file served without `Accept-Ranges` downloads
+    // fine on one connection.
+    if let Some(info) = from_head {
+        return Ok(info);
+    }
+
+    match head {
+        Ok(resp) => bail!("server returned {} for HEAD request", resp.status()),
+        Err(err) => Err(err).context("HEAD request failed"),
+    }
+}
+
+/// Reads a [`ProbeInfo`] out of response headers.
+///
+/// `ranged_status` is the status of a `Range` request when these headers came
+/// from one, and `None` when they came from HEAD. It is what distinguishes a
+/// server that *claims* range support from one that just showed it.
+fn probe_info_from_headers(headers: &HeaderMap, ranged_status: Option<reqwest::StatusCode>) -> ProbeInfo {
     let header_string = |name: reqwest::header::HeaderName| headers.get(name).and_then(|v| v.to_str().ok()).map(str::to_string);
 
-    // Read Content-Length off the headers rather than trusting
-    // `Response::content_length()`: that reports the *body* size, and a HEAD
-    // response has no body, so some servers leave it at zero. Taking the zero
-    // at face value would quietly drop us to a single unresumable connection.
-    let declared_size = headers
-        .get(reqwest::header::CONTENT_LENGTH)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<u64>().ok());
+    let is_partial = ranged_status == Some(reqwest::StatusCode::PARTIAL_CONTENT);
 
-    let supports_range = headers
-        .get(reqwest::header::ACCEPT_RANGES)
-        .map(|v| v.as_bytes() == b"bytes")
-        .unwrap_or(false);
-    let etag = header_string(reqwest::header::ETAG);
-    let last_modified = header_string(reqwest::header::LAST_MODIFIED);
+    // On a 206 the only size that means anything is the total in
+    // `Content-Range`; `Content-Length` there describes the one byte we asked
+    // for. Off a HEAD, read `Content-Length` from the headers rather than
+    // `Response::content_length()`, which reports the (absent) body size.
+    let declared_size = if is_partial {
+        header_string(reqwest::header::CONTENT_RANGE)
+            .as_deref()
+            .and_then(total_from_content_range)
+    } else {
+        headers
+            .get(reqwest::header::CONTENT_LENGTH)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<u64>().ok())
+    };
+
+    let supports_range = is_partial
+        || headers
+            .get(reqwest::header::ACCEPT_RANGES)
+            .map(|v| v.as_bytes() == b"bytes")
+            .unwrap_or(false);
 
     // Sanitised here rather than at the caller: this is where an attacker-chosen
     // string crosses into the engine, and a `ProbeInfo` that could carry
@@ -370,13 +441,31 @@ pub async fn probe(client: &Client, url: &str, extra_headers: &HeaderMap) -> Res
         .as_deref()
         .and_then(filename_from_content_disposition);
 
-    Ok(ProbeInfo {
-        total_size: declared_size.or_else(|| resp.content_length()).unwrap_or(0),
+    ProbeInfo {
+        total_size: declared_size.unwrap_or(0),
         supports_range,
-        etag,
-        last_modified,
+        etag: header_string(reqwest::header::ETAG),
+        last_modified: header_string(reqwest::header::LAST_MODIFIED),
         suggested_filename,
-    })
+    }
+}
+
+/// Total size out of `Content-Range: bytes 0-0/1305405360`.
+///
+/// `None` for the `*/` form, which a server sends when it is honouring the
+/// range but does not know the total — a value we must not invent.
+fn total_from_content_range(value: &str) -> Option<u64> {
+    value.rsplit_once('/')?.1.trim().parse().ok()
+}
+
+/// First byte offset out of `Content-Range: bytes 500000000-500000199/1305405360`.
+///
+/// `None` when the server states no concrete range, which is not evidence of a
+/// mismatch and so must not be treated as one.
+fn start_from_content_range(value: &str) -> Option<u64> {
+    let range = value.split('/').next()?.trim();
+    let range = range.strip_prefix("bytes").unwrap_or(range).trim();
+    range.split('-').next()?.trim().parse().ok()
 }
 
 struct Limiters {
@@ -458,6 +547,8 @@ async fn download_range(
 
         let before = written;
         let start = range.start + written;
+        let slice_end = chunk_end(start, range.end);
+        let slice_len = slice_end - start + 1;
         let result = download_range_once(
             client,
             url,
@@ -465,7 +556,7 @@ async fn download_range(
             output,
             id,
             start,
-            range.end,
+            slice_end,
             &downloaded,
             total_size,
             &on_progress,
@@ -482,6 +573,14 @@ async fn download_range(
             Ok(StreamStop::Ended) => {
                 if written >= segment_len {
                     break;
+                }
+                // A slice that arrived whole is a chunk boundary, not a
+                // truncation: the next pass picks up where it left off. Without
+                // this the normal case would be charged as a retry and a
+                // segment longer than a few chunks could never finish.
+                if written - before >= slice_len {
+                    attempt = 0;
+                    continue;
                 }
                 // The server hung up early. Treat it as a failed attempt so a
                 // server that keeps truncating can't spin here forever.
@@ -548,8 +647,28 @@ async fn download_range_once(
             .send() => resp.context("GET request failed")?,
     };
 
-    if !resp.status().is_success() {
-        bail!("unexpected status {} for range {start}-{end}", resp.status());
+    // Only a 206 may be written here. A 200 means the server did not honour the
+    // Range and is sending something else entirely — the whole file, or an error
+    // page — and dropping that at offset `start` corrupts the download silently.
+    // Google Drive does exactly this once a file hits its download quota, and
+    // `is_success()` waved the HTML through into the middle of the file while
+    // the job still reported success.
+    if resp.status() != reqwest::StatusCode::PARTIAL_CONTENT {
+        bail!("server answered range {start}-{end} with status {}, not 206", resp.status());
+    }
+
+    // A server or proxy that honours Range but returns a different window would
+    // corrupt the file just as quietly, so trust the offset it states over the
+    // one we asked for.
+    if let Some(actual) = resp
+        .headers()
+        .get(reqwest::header::CONTENT_RANGE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(start_from_content_range)
+    {
+        if actual != start {
+            bail!("server returned range starting at {actual}, not {start}");
+        }
     }
 
     let mut file = OpenOptions::new()
@@ -652,4 +771,135 @@ async fn download_single(
     file.flush().await.ok();
 
     Ok(DownloadOutcome::Completed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reqwest::header::{HeaderName, HeaderValue};
+    use reqwest::StatusCode;
+
+    fn headers(pairs: &[(&str, &str)]) -> HeaderMap {
+        let mut map = HeaderMap::new();
+        for (name, value) in pairs {
+            map.insert(
+                HeaderName::from_bytes(name.as_bytes()).unwrap(),
+                HeaderValue::from_str(value).unwrap(),
+            );
+        }
+        map
+    }
+
+    #[test]
+    fn head_with_accept_ranges_and_length_is_enough() {
+        let info = probe_info_from_headers(&headers(&[("content-length", "4096"), ("accept-ranges", "bytes")]), None);
+        assert_eq!(info.total_size, 4096);
+        assert!(info.supports_range);
+    }
+
+    #[test]
+    fn head_without_accept_ranges_does_not_claim_range_support() {
+        let info = probe_info_from_headers(&headers(&[("content-length", "4096")]), None);
+        assert_eq!(info.total_size, 4096);
+        assert!(!info.supports_range);
+    }
+
+    /// `Accept-Ranges: none` is an explicit refusal, not an omission.
+    #[test]
+    fn accept_ranges_none_is_not_range_support() {
+        let info = probe_info_from_headers(&headers(&[("accept-ranges", "none")]), None);
+        assert!(!info.supports_range);
+    }
+
+    /// The Google Drive quota page: HEAD answers 200 with no size and no
+    /// `Accept-Ranges`, which is exactly the answer `probe` must refuse to
+    /// settle for.
+    #[test]
+    fn useless_head_answer_is_recognisable_as_useless() {
+        let info = probe_info_from_headers(&headers(&[("content-type", "text/html; charset=utf-8"), ("content-length", "0")]), None);
+        assert_eq!(info.total_size, 0);
+        assert!(!info.supports_range);
+    }
+
+    /// A 206 proves range support even though `Accept-Ranges` never appeared,
+    /// and the size comes from `Content-Range`, not the one-byte body.
+    #[test]
+    fn partial_content_supplies_total_size_and_range_support() {
+        let info = probe_info_from_headers(
+            &headers(&[
+                ("content-length", "1"),
+                ("content-range", "bytes 0-0/1305405360"),
+                ("content-disposition", "attachment; filename=\"Otakudesu.net_NtRu_720p.rar\""),
+            ]),
+            Some(StatusCode::PARTIAL_CONTENT),
+        );
+        assert_eq!(info.total_size, 1_305_405_360);
+        assert!(info.supports_range);
+        assert_eq!(info.suggested_filename.as_deref(), Some("Otakudesu.net_NtRu_720p.rar"));
+    }
+
+    #[test]
+    fn unknown_total_in_content_range_is_not_invented() {
+        let info = probe_info_from_headers(&headers(&[("content-range", "bytes 0-0/*")]), Some(StatusCode::PARTIAL_CONTENT));
+        assert_eq!(info.total_size, 0);
+        assert!(info.supports_range);
+    }
+
+    #[test]
+    fn content_range_total_is_parsed() {
+        assert_eq!(total_from_content_range("bytes 0-0/1305405360"), Some(1_305_405_360));
+        assert_eq!(total_from_content_range("bytes 0-0/*"), None);
+        assert_eq!(total_from_content_range("bytes */1024"), Some(1024));
+        assert_eq!(total_from_content_range("garbage"), None);
+    }
+
+    #[test]
+    fn chunks_never_exceed_the_cap() {
+        assert_eq!(chunk_end(0, 1_305_405_359), MAX_RANGE_CHUNK - 1);
+        assert_eq!(chunk_end(MAX_RANGE_CHUNK, 1_305_405_359), 2 * MAX_RANGE_CHUNK - 1);
+    }
+
+    /// The last slice of a segment is short, and must stop at the segment's own
+    /// end — running past it would overwrite the next segment's bytes.
+    #[test]
+    fn chunks_stop_at_the_segment_end() {
+        assert_eq!(chunk_end(100, 199), 199);
+        assert_eq!(chunk_end(0, u64::MAX), MAX_RANGE_CHUNK - 1);
+    }
+
+    /// Walking a segment slice by slice must land exactly on its end, with no
+    /// gap and no overlap.
+    #[test]
+    fn chunks_tile_a_segment_exactly() {
+        let (start, end) = (163_175_670u64, 326_351_339u64);
+        let mut at = start;
+        let mut slices = 0;
+        while at <= end {
+            let stop = chunk_end(at, end);
+            assert!(stop >= at && stop <= end);
+            at = stop + 1;
+            slices += 1;
+        }
+        assert_eq!(at, end + 1);
+        assert_eq!(slices, 20);
+    }
+
+    #[test]
+    fn content_range_start_is_parsed() {
+        assert_eq!(start_from_content_range("bytes 500000000-500000199/1305405360"), Some(500_000_000));
+        assert_eq!(start_from_content_range("bytes 0-0/*"), Some(0));
+        // No concrete range stated: unknown, not a mismatch.
+        assert_eq!(start_from_content_range("bytes */1024"), None);
+        assert_eq!(start_from_content_range("garbage"), None);
+    }
+
+    #[test]
+    fn validators_survive_both_paths() {
+        let pairs = [("etag", "\"abc\""), ("last-modified", "Wed, 21 Oct 2026 07:28:00 GMT")];
+        for status in [None, Some(StatusCode::PARTIAL_CONTENT)] {
+            let info = probe_info_from_headers(&headers(&pairs), status);
+            assert_eq!(info.etag.as_deref(), Some("\"abc\""));
+            assert_eq!(info.last_modified.as_deref(), Some("Wed, 21 Oct 2026 07:28:00 GMT"));
+        }
+    }
 }
