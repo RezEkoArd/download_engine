@@ -34,7 +34,7 @@ Hasilnya ada di `target/release/bundle/` — installer NSIS (`.exe`) dan MSI, ka
 
 > Build release memakai `lto = true` dan `codegen-units = 1`, jadi ini jauh lebih lama daripada `pnpm tauri dev` — hitungan belasan menit, bukan detik. Untuk sekadar mencoba, `pnpm tauri dev` lebih cepat.
 
-Setelah terpasang, yang perlu dibaca cuma satu dokumen: **[Panduan Penggunaan di README GUI](download_engine_gui/README.md#panduan-penggunaan)** — menambah download, status job, aksi borongan, Settings, tray, clipboard monitor, dan bridge browser semuanya di situ. Kalau ada yang berperilaku aneh, [Troubleshooting](download_engine_gui/README.md#troubleshooting) di README yang sama memuat gejala beserta penyebabnya.
+Setelah terpasang, yang perlu dibaca cuma satu dokumen: **[PENGGUNAAN.md](PENGGUNAAN.md)** — menambah download, nama file dari server, status job, aksi borongan, Settings, tray, clipboard monitor, dan bridge browser semuanya di situ, berikut daftar gejala kalau ada yang berperilaku aneh.
 
 Mau kirim link langsung dari browser? Pasang extension-nya: [browser-extension/README.md](browser-extension/README.md) — ada langkah pairing token di situ, dan itu wajib sekali di awal karena bridge menolak permintaan tanpa token.
 
