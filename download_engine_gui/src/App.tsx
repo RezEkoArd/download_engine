@@ -9,6 +9,7 @@ import type { AppSettings, FileCategory, Job, JobResult, JobStatus, NewJobInput,
 import { calculateEta, detectCategory, formatBytes, nameFromUrl, progressPercent } from "./lib/format";
 import { loadState, saveState } from "./lib/persistence";
 import { notifyDownloadComplete, notifyDownloadFailed } from "./lib/notifications";
+import { dragHasText, extractUrls } from "./lib/urls";
 import NewDownloadModal from "./components/NewDownloadModal";
 import SettingsModal from "./components/SettingsModal";
 import InspectorDrawer from "./components/InspectorDrawer";
@@ -160,6 +161,9 @@ function App() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   /** Anchor for shift-click range selection. */
   const lastClickedRef = useRef<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  /** Seeds the new-download form when a link is dropped onto the window. */
+  const [pendingUrl, setPendingUrl] = useState("");
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
@@ -457,6 +461,77 @@ function App() {
     };
   }, []);
 
+  function openNewDownload(url = "") {
+    setPendingUrl(url);
+    setNewDownloadOpen(true);
+  }
+
+  function closeNewDownload() {
+    setNewDownloadOpen(false);
+    setPendingUrl("");
+  }
+
+  const dropUrlsRef = useRef<(urls: string[]) => void>(() => {});
+  useEffect(() => {
+    dropUrlsRef.current = (urls) => {
+      if (urls.length === 0) return;
+      // A single link goes through the form, so an accidental drop can still
+      // be reviewed or cancelled. A batch has no place in that form, so it
+      // gets queued with the current defaults instead.
+      if (urls.length === 1) {
+        openNewDownload(urls[0]);
+        return;
+      }
+      urls.forEach((url) =>
+        handleCreateJob({
+          url,
+          outputPath: "",
+          segments: settings.defaultSegments,
+          limit: settings.defaultLimit,
+          startInSec: 0,
+          forceStart: false,
+        }),
+      );
+    };
+  });
+
+  // Dropped links are handled on `window` so the whole app area accepts them.
+  // This only works because Tauri's own OS-level drag handler is disabled in
+  // tauri.conf.json; with it on, WebView2 never forwards these DOM events.
+  useEffect(() => {
+    const onDragOver = (event: DragEvent) => {
+      if (!event.dataTransfer || !dragHasText(event.dataTransfer.types)) return;
+      // Without preventDefault the browser refuses the drop outright — which
+      // conveniently makes a file drag show a "not allowed" cursor by itself.
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      setDragActive(true);
+    };
+
+    const onDragLeave = (event: DragEvent) => {
+      // Inner elements fire this too, so only a null relatedTarget means the
+      // pointer really left the window.
+      if (event.relatedTarget === null) setDragActive(false);
+    };
+
+    const onDrop = (event: DragEvent) => {
+      // Swallowed unconditionally, so a stray file drop can't make the webview
+      // navigate away from the app.
+      event.preventDefault();
+      setDragActive(false);
+      dropUrlsRef.current(extractUrls(event.dataTransfer));
+    };
+
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, []);
+
   const filteredJobs = useMemo(() => {
     const q = search.toLowerCase();
     return jobs.filter((j) => {
@@ -631,7 +706,7 @@ function App() {
       <div className="bg-white dark:bg-darkbg-800 border-b border-gray-200 dark:border-gray-700/80 px-4 py-2 flex flex-wrap items-center justify-between gap-2 shadow-sm">
         <div className="flex items-center space-x-1.5">
           <button
-            onClick={() => setNewDownloadOpen(true)}
+            onClick={() => openNewDownload()}
             className="bg-brand-600 hover:bg-brand-700 text-white font-medium px-3.5 py-1.5 rounded-lg flex items-center space-x-2 shadow-sm transition active:scale-95"
           >
             <i className="fa-solid fa-plus text-xs" />
@@ -961,8 +1036,8 @@ function App() {
                 <i className="fa-solid fa-cloud-arrow-down" />
               </div>
               <h3 className="font-semibold text-base text-gray-800 dark:text-gray-200">No downloads found</h3>
-              <p className="text-xs text-gray-500 max-w-sm mt-1">Start by adding a new download URL or tweaking your active filter criteria.</p>
-              <button onClick={() => setNewDownloadOpen(true)} className="mt-4 bg-brand-600 hover:bg-brand-700 text-white px-4 py-1.5 rounded-lg text-xs font-medium transition shadow">
+              <p className="text-xs text-gray-500 max-w-sm mt-1">Tambahkan URL baru, tarik link ke jendela ini, atau ubah filter yang sedang aktif.</p>
+              <button onClick={() => openNewDownload()} className="mt-4 bg-brand-600 hover:bg-brand-700 text-white px-4 py-1.5 rounded-lg text-xs font-medium transition shadow">
                 <i className="fa-solid fa-plus mr-1" /> Add Download
               </button>
             </div>
@@ -990,14 +1065,26 @@ function App() {
         {inspectedJob && <InspectorDrawer job={inspectedJob} onClose={() => setInspectedId(null)} />}
       </div>
 
+      {/* Drop overlay. pointer-events-none keeps it from eating the drop. */}
+      {dragActive && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm pointer-events-none">
+          <div className="border-2 border-dashed border-brand-400 rounded-2xl px-10 py-8 text-center bg-white/95 dark:bg-darkbg-800/95 shadow-2xl">
+            <i className="fa-solid fa-link text-3xl text-brand-500" />
+            <div className="mt-3 font-semibold text-gray-900 dark:text-gray-100">Lepaskan link untuk menambah download</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Beberapa link sekaligus juga bisa</div>
+          </div>
+        </div>
+      )}
+
       {newDownloadOpen && (
         <NewDownloadModal
           defaultSegments={settings.defaultSegments}
           defaultLimit={settings.defaultLimit}
-          onClose={() => setNewDownloadOpen(false)}
+          initialUrl={pendingUrl}
+          onClose={closeNewDownload}
           onSubmit={(input) => {
             handleCreateJob(input);
-            setNewDownloadOpen(false);
+            closeNewDownload();
           }}
           onBrowse={browsePath}
         />

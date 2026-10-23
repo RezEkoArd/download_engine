@@ -37,6 +37,17 @@ Ada dua tombol dengan arti berbeda:
 
 Begitu job ditambahkan, URL-nya langsung di-probe untuk mengambil ukuran file dan dukungan Range request, jadi kolom Size terisi sebelum download mulai.
 
+### Drag-and-drop link
+
+Tarik link dari browser (atau teks berisi URL) ke mana saja di jendela aplikasi. Overlay muncul saat drag masuk, dan yang terjadi setelah dilepas tergantung jumlahnya:
+
+- **Satu link** → form New Download terbuka dengan URL-nya sudah terisi, jadi drop yang tidak sengaja masih bisa dibatalkan atau disesuaikan dulu.
+- **Beberapa link** → semuanya langsung masuk queue dengan default dari Settings, karena form itu cuma bisa menampung satu URL.
+
+Hanya `http` dan `https` yang diterima; skema lain diabaikan. URL yang sama di satu drop di-*dedupe*, karena menarik blok teks berisi link yang berulang itu hal biasa.
+
+> **Menarik file tidak diterima.** Agar drag-and-drop HTML5 bisa jalan di WebView2, handler drag-drop bawaan Tauri harus dimatikan (`dragDropEnabled: false` di `tauri.conf.json`) — dan konsekuensinya aplikasi tidak lagi menerima event file-drop level OS. Saat menarik file, kursor akan menampilkan tanda "tidak boleh". Ini pertukaran yang disengaja: fiturnya memang untuk link, bukan file.
+
 ### Status job
 
 | Status | Arti |
@@ -156,6 +167,7 @@ Frontend memegang daftar job; engine hanya tahu soal download yang sedang jalan.
 | `src/lib/persistence.ts` | load/save state + penandaan status *interrupted* |
 | `src/lib/notifications.ts` | notifikasi selesai/gagal, hasil cek izin di-cache |
 | `src/lib/jobActions.ts` | buka folder (reveal) + copy ke clipboard |
+| `src/lib/urls.ts` | validasi URL http(s) + parsing payload drag-and-drop |
 | `src/components/NewDownloadModal.tsx` | form tambah download |
 | `src/components/SettingsModal.tsx` | form setting |
 | `src/components/InspectorDrawer.tsx` | panel progress per segmen + aksi per job |
@@ -193,6 +205,8 @@ Entri tray yang bergantung pada daftar job dikirim sebagai event, bukan dikerjak
 | Aplikasi hilang setelah ditekan X | memang disembunyikan ke tray, bukan ditutup | klik ikon tray, atau **Keluar** dari menu tray |
 | Tombol **Buka Folder** nonaktif | job masih *queued*, filenya belum dibuat | jalankan dulu job-nya |
 | Pilihan hilang sendiri saat filter diubah | memang disengaja — pilihan dijaga hanya berisi baris yang terlihat | pilih ulang setelah filternya pas |
+| Menarik file ke jendela ditolak | handler drag-drop OS dimatikan supaya drag link bisa jalan | pakai **New Download** untuk file lokal, drag hanya untuk link |
+| Drag link tidak bereaksi sama sekali | `dragDropEnabled` kembali `true` di `tauri.conf.json` | set ke `false` |
 | Klik ikon aplikasi tidak membuka jendela baru | single-instance guard | jendela instance yang sudah jalan yang dimunculkan |
 
 ## Setup IDE

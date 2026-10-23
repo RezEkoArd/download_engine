@@ -4,6 +4,8 @@ import type { NewJobInput } from "../types";
 interface Props {
   defaultSegments: number;
   defaultLimit: string;
+  /** Pre-filled when the modal was opened by dropping a link onto the window. */
+  initialUrl?: string;
   onClose: () => void;
   onSubmit: (input: NewJobInput) => void;
   onBrowse: () => Promise<string | null>;
@@ -16,8 +18,8 @@ const LIMIT_OPTIONS = [
   { value: "10MB", label: "10 MB/s" },
 ];
 
-export default function NewDownloadModal({ defaultSegments, defaultLimit, onClose, onSubmit, onBrowse }: Props) {
-  const [url, setUrl] = useState("");
+export default function NewDownloadModal({ defaultSegments, defaultLimit, initialUrl = "", onClose, onSubmit, onBrowse }: Props) {
+  const [url, setUrl] = useState(initialUrl);
   const [outputPath, setOutputPath] = useState("");
   const [segments, setSegments] = useState(defaultSegments);
   const [limit, setLimit] = useState(defaultLimit);

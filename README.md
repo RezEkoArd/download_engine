@@ -93,7 +93,7 @@ download_engine_gui/          # aplikasi desktop
 - [x] System tray (close ke tray, download tetap jalan)
 - [x] Aksi buka folder / copy link per job
 - [x] Multi-select job (bulk pause/cancel/retry)
-- [ ] Drag-and-drop URL ke window
+- [x] Drag-and-drop URL ke window
 - [ ] Deteksi URL duplikat
 - [ ] Clipboard monitor (auto-detect link)
 - [ ] Browser integration lewat Native Messaging
