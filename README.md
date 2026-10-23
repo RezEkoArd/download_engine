@@ -134,8 +134,10 @@ download_engine_gui/          # aplikasi desktop
   src-tauri/src/persistence.rs# baca/tulis app-state.json
 
 browser-extension/            # extension Chrome/Edge (MV3)
-  background.js               # menu klik-kanan + kirim ke bridge
-  options.html / options.js   # pairing token + izin cookie opsional
+  background.js               # menu klik-kanan, intersepsi download, kirim ke bridge
+  options.html / options.js   # pairing token, izin opsional, log intersepsi
+  popup.html / popup.js       # popup toolbar: status + kirim link manual
+  ui.css                      # styling bersama (statis — MV3 melarang script CDN)
 ```
 
 ## Status Fitur
@@ -162,3 +164,4 @@ browser-extension/            # extension Chrome/Edge (MV3)
 - [x] Header per job (`Cookie`/`Referer`/`User-Agent`) — fondasi integrasi browser
 - [x] HTTP listener localhost + pairing token (opt-in, `127.0.0.1:47283`)
 - [x] Extension Chrome/Edge: menu klik-kanan "Download with Download Engine"
+- [x] Extension mengambil alih download browser (opt-in, izin `downloads`) — menangkap URL final setelah redirect, yang tidak bisa didapat dari klik-kanan

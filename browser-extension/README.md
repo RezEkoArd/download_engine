@@ -12,14 +12,16 @@ Belum di Web Store, jadi dipasang sebagai unpacked extension.
 2. Nyalakan **Developer mode**.
 3. **Load unpacked** → pilih folder `browser-extension` ini.
 
+> Setelah menarik perubahan yang menyentuh `manifest.json`, tekan **↻ Reload** di kartu extension. Chrome membaca `options.html` dan `background.js` dari disk setiap kali, tapi manifest hanya saat dimuat — jadi UI baru bisa muncul sementara izin barunya belum terdaftar, dan Chrome akan menolak memunculkan prompt izin yang menurut manifest lamanya tidak ada.
+
 ## Pairing
 
 Bridge menolak permintaan tanpa token, jadi ini wajib sekali di awal:
 
 1. Di aplikasi: **Settings → Terima Link dari Extension Browser** → nyalakan.
 2. Copy **Token Pairing** yang muncul di bawahnya.
-3. Klik ikon extension di toolbar (atau **Details → Extension options**).
-4. Tempel token → **Simpan** → **Tes koneksi**.
+3. Klik ikon extension di toolbar → **Buka Pengaturan Lengkap** (atau **Details → Extension options**).
+4. Tempel token → **Simpan Token** → **Tes Koneksi**.
 
 **Tes koneksi** membedakan tiga kegagalan yang terasa sama tapi penyebabnya beda: aplikasi tidak jalan, aplikasi jalan tapi bridge-nya mati, dan aplikasi terhubung tapi token salah. Menyimpan token yang diam-diam tidak berfungsi jauh lebih membingungkan.
 
@@ -29,7 +31,11 @@ Token disimpan di `chrome.storage.local`, bukan `sync`. Token ini hanya berlaku 
 
 Klik kanan sebuah **link**, **video**, **audio**, atau **gambar** → **Download with Download Engine**.
 
+Menu ini hanya muncul di atas link dan media, bukan di area kosong halaman — itu context yang didaftarkan extension, bukan kelalaian. Tombol "Download" di banyak situs bukan link (ia men-submit form), jadi tidak ada yang bisa diklik-kanan di sana. Untuk kasus itu, pakai **Ambil alih download browser** di bawah.
+
 Hasilnya muncul sebagai badge kecil di ikon extension — ✓ hijau kalau diterima, ! merah kalau tidak, dengan alasannya di tooltip. Badge dipilih daripada notifikasi sistem karena notifikasi butuh izin tersendiri untuk sesuatu sekecil ini.
+
+Klik ikon extension untuk **popup**-nya: status koneksi ke aplikasi, kolom tempel URL untuk mengirim link manual, dua toggle izin, dan jalan pintas ke pengaturan lengkap. Kolom manual itu berguna untuk URL yang kamu dapat dari tempat lain — misalnya hasil **Copy link address** di `chrome://downloads`.
 
 Job langsung masuk daftar di aplikasi dan ikut antrian seperti download yang kamu tambahkan sendiri — scheduler aplikasi yang menentukan kapan mulai, menghormati batas Concurrency.
 
@@ -42,6 +48,25 @@ Job langsung masuk daftar di aplikasi dan ikut antrian seperti download yang kam
 | `http://127.0.0.1:47283/*` | satu-satunya alamat yang dihubungi extension ini |
 
 Tidak ada izin membaca halaman, tidak ada content script, tidak ada akses ke tab. Extension ini tidak pernah melihat isi halaman yang kamu buka — yang diterimanya dari menu klik-kanan hanya URL link dan URL halamannya.
+
+### Ambil alih download browser — opsional
+
+| Izin | Kenapa |
+| --- | --- |
+| `downloads` | **opsional.** Baru diminta kalau kamu mencentang "Ambil alih download browser" |
+
+Menu klik-kanan hanya melihat `href` sebuah link, dan di banyak situs itu bukan yang benar-benar diunduh. Halaman perantara, form submit, dan rantai redirect menghasilkan URL lain — URL final baru diketahui setelah browser menelusurinya sendiri. Google Drive adalah contohnya: tombol "Download anyway" bukan link, dan link nama file di atasnya menunjuk ke halaman preview, bukan ke file-nya.
+
+Dengan izin ini, extension mendengarkan `chrome.downloads.onCreated`, mengambil `finalUrl` milik download itu, mengirimkannya ke aplikasi, lalu membatalkan dan menghapus entri di browser.
+
+**Urutannya disengaja: kirim dulu, batalkan belakangan.** Pembatalan hanya terjadi setelah aplikasi menjawab menerima job-nya. Kalau aplikasi sedang tutup, bridge-nya mati, atau token salah, download-mu tidak disentuh sama sekali dan browser menyelesaikannya seperti biasa. Urutan sebaliknya akan membuat setiap download yang dimulai saat aplikasi tutup lenyap tanpa pengganti.
+
+Yang tidak diambil alih:
+
+- URL non-`http(s)` — `blob:`, `data:`, `filesystem:`. URL itu hanya hidup di dalam memori browser, jadi mengirimkannya hanya akan membuat job yang tidak pernah bisa selesai setelah membatalkan download yang tadinya baik-baik saja.
+- Apa pun, kalau token belum diisi.
+
+Perlu diketahui: izin ini memperlihatkan **seluruh** aktivitas download-mu ke extension, dan "Save page as" pun ikut terambil alih. Kalau menu klik-kanan sudah cukup, biarkan mati. Izin bisa dicabut kapan saja, dan listener-nya ikut dilepas begitu itu terjadi.
 
 ### Cookie — opsional, dan sengaja begitu
 
@@ -63,6 +88,12 @@ Yang membatasi dampaknya:
 Izin bisa dicabut kapan saja dari halaman extension Chrome. Checkbox di halaman opsi membaca izin yang sebenarnya, bukan preferensi tersimpan, jadi kalau kamu cabut dari luar, centangnya ikut hilang.
 
 Kalau izin belum ada, extension **tidak** diam-diam memintanya saat kamu klik menu — prompt izin butuh gesture pengguna dan tidak bisa dimunculkan dari handler menu. Jadi link bergerbang akan gagal secara terlihat sampai kamu menyalakannya sendiri.
+
+## Log intersepsi
+
+Tab **Log Intersepsi** di halaman pengaturan mencatat setiap URL yang diserahkan ke aplikasi: waktu, URL, asalnya (klik-kanan / intersepsi / popup), ada tidaknya cookie, dan apakah aplikasi menerimanya. Tanpa ini, satu-satunya cara tahu sebuah download sampai atau tidak adalah menebak.
+
+Maksimal 50 entri terakhir, disimpan di `chrome.storage.local` — jadi ikut `local` dan bukan `sync`, karena ini daftar URL yang kamu kunjungi dan tidak ada alasan menyebarkannya ke profil lain lewat akun Google. Tombol **Bersihkan Log** menghapus semuanya.
 
 ## Yang dikirim
 

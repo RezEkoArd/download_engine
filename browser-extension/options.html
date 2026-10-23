@@ -3,147 +3,206 @@
   <head>
     <meta charset="utf-8" />
     <title>Download Engine — Opsi</title>
-    <style>
-      :root {
-        color-scheme: light dark;
-        --fg: #1f2937;
-        --muted: #6b7280;
-        --bg: #ffffff;
-        --field: #f9fafb;
-        --line: #e5e7eb;
-        --brand: #4f46e5;
-        --ok: #16a34a;
-        --bad: #dc2626;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --fg: #f3f4f6;
-          --muted: #9ca3af;
-          --bg: #111827;
-          --field: #1f2937;
-          --line: #374151;
-          --brand: #818cf8;
-        }
-      }
-      body {
-        font: 13px/1.6 system-ui, sans-serif;
-        color: var(--fg);
-        background: var(--bg);
-        margin: 0;
-        padding: 24px;
-        max-width: 520px;
-      }
-      h1 {
-        font-size: 15px;
-        margin: 0 0 4px;
-      }
-      p.sub {
-        color: var(--muted);
-        font-size: 12px;
-        margin: 0 0 20px;
-      }
-      label.field {
-        display: block;
-        font-weight: 600;
-        margin-bottom: 6px;
-      }
-      input[type="text"],
-      input[type="password"] {
-        width: 100%;
-        box-sizing: border-box;
-        font-family: ui-monospace, monospace;
-        font-size: 11px;
-        padding: 8px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--field);
-        color: var(--fg);
-      }
-      .row {
-        display: flex;
-        gap: 8px;
-        margin-top: 12px;
-      }
-      button {
-        font: inherit;
-        font-size: 12px;
-        padding: 7px 14px;
-        border-radius: 8px;
-        border: 1px solid var(--line);
-        background: var(--field);
-        color: var(--fg);
-        cursor: pointer;
-      }
-      button.primary {
-        background: var(--brand);
-        border-color: var(--brand);
-        color: #fff;
-        font-weight: 600;
-      }
-      #status {
-        margin-top: 12px;
-        font-size: 12px;
-        min-height: 18px;
-      }
-      #status.ok {
-        color: var(--ok);
-      }
-      #status.bad {
-        color: var(--bad);
-      }
-      hr {
-        border: 0;
-        border-top: 1px solid var(--line);
-        margin: 22px 0;
-      }
-      .check {
-        display: flex;
-        gap: 8px;
-        align-items: flex-start;
-      }
-      .check span {
-        font-size: 12px;
-        color: var(--muted);
-      }
-      .check strong {
-        color: var(--fg);
-        display: block;
-        font-size: 13px;
-      }
-      code {
-        font-family: ui-monospace, monospace;
-        background: var(--field);
-        padding: 1px 4px;
-        border-radius: 4px;
-      }
-    </style>
+    <link rel="stylesheet" href="ui.css" />
   </head>
   <body>
-    <h1>Download Engine</h1>
-    <p class="sub">Extension mengirim link ke aplikasi di <code>127.0.0.1:47283</code>. Aplikasi harus jalan dan bridge-nya dinyalakan di Settings.</p>
+    <!--
+      Icons are an inline sprite rather than a FontAwesome stylesheet from a CDN:
+      an extension's settings page must still render with no network, and MV3
+      blocks remote scripts outright.
+    -->
+    <svg hidden xmlns="http://www.w3.org/2000/svg">
+      <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12L13 2Z" /></symbol>
+      <symbol id="i-key" viewBox="0 0 24 24"><path d="M14 2a8 8 0 0 0-7.7 10.2L2 16.5V22h5.5l1.2-1.2V18h2.3l1.4-1.4v-2.3h2.3l1-1A8 8 0 1 0 14 2Zm3.5 6a1.8 1.8 0 1 1 0-3.5 1.8 1.8 0 0 1 0 3.5Z" /></symbol>
+      <symbol id="i-cookie" viewBox="0 0 24 24"><path d="M21.9 11.3a4 4 0 0 1-4.7-5.1A4 4 0 0 1 12.6 2 10 10 0 1 0 22 11.4ZM8.5 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm-.5 7a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm6.5 1.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm.5-6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z" /></symbol>
+      <symbol id="i-magnet" viewBox="0 0 24 24"><path d="M3 4h5v8a4 4 0 0 0 8 0V4h5v8a9 9 0 0 1-18 0V4Zm0 10h5v-4H3v4Zm13-4v4h5v-4h-5Z" /></symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M3 6h9V4h2v6h-2V8H3V6Zm18 0h-5V4h-2v6h2V8h5V6ZM3 16h5v-2h2v6H8v-2H3v-2Zm18 0h-9v-2h-2v6h2v-2h9v-2Z" /></symbol>
+      <symbol id="i-history" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 8.5 12h-2.2A6.9 6.9 0 1 1 12 5.1c1.9 0 3.6.8 4.8 2L13 7v2h7V2l-2.6 2.6A9 9 0 0 0 12 3Zm-1 4v6l5 3 .9-1.5-4-2.3V7h-2Z" /></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 15h-2v-6h2v6Zm0-8h-2V7h2v2Z" /></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1.2 14.5-4.3-4.3 1.5-1.4 2.8 2.8 5.7-5.7 1.4 1.4-7.1 7.2Z" /></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm3.5 12.1-1.4 1.4L12 13.4l-2.1 2.1-1.4-1.4 2.1-2.1-2.1-2.1 1.4-1.4 2.1 2.1 2.1-2.1 1.4 1.4-2.1 2.1 2.1 2.1Z" /></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1 14H9V8h2v8Zm4 0h-2V8h2v8Z" /></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 1 3 5v6c0 5.2 3.8 10 9 12 5.2-2 9-6.8 9-12V5l-9-4Zm-1 15-4-4 1.4-1.4L11 13.2l4.6-4.6L17 10l-6 6Z" /></symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24"><path d="M12 5C6.5 5 2.2 9 1 12c1.2 3 5.5 7 11 7s9.8-4 11-7c-1.2-3-5.5-7-11-7Zm0 11.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9Zm0-2a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" /></symbol>
+      <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M2.1 3.5 3.5 2.1l18.4 18.4-1.4 1.4-3.3-3.3A11.8 11.8 0 0 1 12 19c-5.5 0-9.8-4-11-7a13 13 0 0 1 4.3-5.2L2.1 3.5ZM12 5c5.5 0 9.8 4 11 7a13 13 0 0 1-3.6 4.7l-3-3A4.5 4.5 0 0 0 10.3 7.6l-2.4-2.4A11.8 11.8 0 0 1 12 5Z" /></symbol>
+      <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5V3Zm3 2v5h7V5H8Zm-1 9v5h10v-5H7Z" /></symbol>
+      <symbol id="i-plug" viewBox="0 0 24 24"><path d="M4 3h4v4H4V3Zm12 0h4v4h-4V3ZM4 17h4v4H4v-4Zm12 0h4v4h-4v-4ZM11 5h2v6h5v2h-5v6h-2v-6H6v-2h5V5Z" /></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12.5 2A10 10 0 1 0 22 14.3 8 8 0 0 1 12.5 2Z" /></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0-6h-1v4h2V1h-1Zm0 18h-1v4h2v-4h-1ZM1 11v2h4v-2H1Zm18 0v2h4v-2h-4ZM4.2 2.8 2.8 4.2l2.8 2.8 1.4-1.4-2.8-2.8Zm12.8 14.2-1.4 1.4 2.8 2.8 1.4-1.4-2.8-2.8Zm2.8-14.2L17 5.6 18.4 7l2.8-2.8-1.4-1.4ZM5.6 17 2.8 19.8l1.4 1.4L7 18.4 5.6 17Z" /></symbol>
+    </svg>
 
-    <label class="field" for="token">Token pairing</label>
-    <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Copy dari Settings aplikasi" />
-    <div class="row">
-      <button id="save" class="primary">Simpan</button>
-      <button id="test">Tes koneksi</button>
-      <button id="reveal">Tampilkan</button>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brandmark">
+          <div class="logo"><svg class="icon"><use href="#i-bolt" /></svg></div>
+          <div>
+            <div class="title-row">
+              <h1>Download Engine</h1>
+              <span class="pill" id="versionPill">Chrome Extension</span>
+            </div>
+            <p class="sub">Bridge Konfigurasi &amp; Intersepsi Browser</p>
+          </div>
+        </div>
+
+        <div class="topbar-actions">
+          <div class="status-badge" id="connBadge">
+            <span class="dot"></span>
+            <span id="connText">Memeriksa bridge…</span>
+          </div>
+          <div class="divider-v"></div>
+          <button class="btn-ghost" id="themeToggle" title="Ganti tema" aria-label="Ganti tema">
+            <svg class="icon" style="font-size: 16px"><use href="#i-moon" id="themeIcon" /></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div class="shell">
+      <aside class="sidebar">
+        <button class="tab-btn" id="nav-settings" role="tab" aria-selected="true" aria-controls="tab-settings">
+          <svg class="icon" style="font-size: 14px"><use href="#i-sliders" /></svg>
+          <span>Pengaturan Bridge</span>
+        </button>
+        <button class="tab-btn" id="nav-logs" role="tab" aria-selected="false" aria-controls="tab-logs">
+          <svg class="icon" style="font-size: 14px"><use href="#i-history" /></svg>
+          <span>Log Intersepsi</span>
+        </button>
+
+        <div class="info-box">
+          <h2><svg class="icon"><use href="#i-info" /></svg> Informasi Bridge</h2>
+          <p>Extension mengirim link ke aplikasi desktop di <code>127.0.0.1:47283</code>. Aplikasi Download Engine harus jalan dan bridge-nya dinyalakan di Settings.</p>
+        </div>
+      </aside>
+
+      <main class="content">
+        <!-- ---------- Pengaturan ---------- -->
+        <section id="tab-settings" role="tabpanel" style="display: flex; flex-direction: column; gap: 24px">
+          <div class="card">
+            <div class="card-head ruled">
+              <div class="head-left">
+                <div class="card-icon brand"><svg class="icon"><use href="#i-key" /></svg></div>
+                <div>
+                  <h3>Token Pairing Desktop App</h3>
+                  <p>Otentikasi antara extension dan Download Engine di komputer ini</p>
+                </div>
+              </div>
+              <span class="tag" id="authTag">Belum diuji</span>
+            </div>
+
+            <div>
+              <label class="field" for="token">Kunci Otentikasi (Token)</label>
+              <div class="field-row">
+                <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Copy dari Settings aplikasi" />
+                <button class="btn-icon" id="reveal" title="Tampilkan token" aria-label="Tampilkan token">
+                  <svg class="icon" style="font-size: 14px"><use href="#i-eye" id="revealIcon" /></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="btn-row">
+              <button class="btn btn-primary" id="save"><svg class="icon"><use href="#i-save" /></svg> Simpan Token</button>
+              <button class="btn" id="test"><svg class="icon"><use href="#i-plug" /></svg> Tes Koneksi</button>
+            </div>
+            <div id="status"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div class="head-left">
+                <div class="card-icon amber"><svg class="icon"><use href="#i-cookie" /></svg></div>
+                <div>
+                  <h3>Sertakan Cookie Situs</h3>
+                  <p>Diperlukan untuk link yang hanya bisa diunduh setelah login (mencegah HTTP 403)</p>
+                </div>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="cookies" aria-label="Sertakan cookie situs" />
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="note">
+              <p>
+                Mengaktifkannya memberi extension izin membaca <em>semua</em> cookie-mu, termasuk yang <code>HttpOnly</code> — yang normalnya tidak bisa dibaca JavaScript halaman mana pun. Itu kenaikan
+                akses yang nyata, jadi sengaja tidak dijadikan izin wajib.
+              </p>
+              <p class="fine">Cookie hanya dibaca saat sebuah link dikirim, hanya untuk situs link itu, dan hanya dikirim ke aplikasi di komputer ini. Di sisi aplikasi, cookie tidak ditulis ke disk.</p>
+            </div>
+
+            <div class="state-line">
+              <span class="label">Status Izin:</span>
+              <span class="value" id="cookieState"></span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div class="head-left">
+                <div class="card-icon blue"><svg class="icon"><use href="#i-magnet" /></svg></div>
+                <div>
+                  <h3>Ambil Alih Download Browser</h3>
+                  <p>Teruskan unduhan yang dimulai browser ke Download Engine</p>
+                </div>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="intercept" aria-label="Ambil alih download browser" />
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="note">
+              <p>
+                Menu klik-kanan hanya melihat <code>href</code> sebuah link, dan di banyak situs itu bukan yang benar-benar diunduh. Tombol unduh yang men-submit form dan halaman perantara menghasilkan
+                URL lain — URL finalnya baru diketahui setelah browser menelusuri semua pengalihan.
+              </p>
+              <p class="fine">Izin <code>downloads</code> memperlihatkan seluruh unduhanmu ke extension ini. Biarkan mati kalau menu klik-kanan sudah cukup.</p>
+              <div class="callout">
+                <svg class="icon" style="font-size: 13px; margin-top: 2px"><use href="#i-shield" /></svg>
+                <span>Kirim dulu, batalkan belakangan: kalau aplikasi sedang tutup, bridge mati, atau token salah, download tidak dibatalkan — browser tetap menyelesaikannya.</span>
+              </div>
+            </div>
+
+            <div class="state-line">
+              <span class="label">Status Intersepsi:</span>
+              <span class="value" id="interceptState"></span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ---------- Log ---------- -->
+        <section id="tab-logs" role="tabpanel" hidden>
+          <div class="card">
+            <div class="card-head ruled">
+              <div>
+                <h3>Riwayat Serah-Terima URL</h3>
+                <p>Tercatat di komputer ini saja, maksimal 50 entri terakhir</p>
+              </div>
+              <button class="btn-link danger" id="clearLogs">Bersihkan Log</button>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Waktu</th>
+                    <th>URL File</th>
+                    <th>Asal</th>
+                    <th>Cookie</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="logBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
     </div>
-    <div id="status"></div>
 
-    <hr />
-
-    <label class="check">
-      <input id="cookies" type="checkbox" />
-      <span>
-        <strong>Sertakan cookie situs</strong>
-        Diperlukan untuk link yang hanya bisa diunduh setelah login. Tanpa ini, link seperti itu akan mengunduh halaman login atau gagal dengan 403.
-        <br /><br />
-        Mengaktifkannya memberi extension izin membaca <em>semua</em> cookie-mu, termasuk yang <code>HttpOnly</code> — yang normalnya tidak bisa dibaca JavaScript halaman mana pun. Cookie
-        hanya dibaca saat kamu menekan menu klik-kanan, hanya untuk situs link itu, dan hanya dikirim ke aplikasi di komputer ini. Biarkan mati kalau kamu tidak butuh.
-      </span>
-    </label>
-    <div id="permStatus" class="sub" style="margin-top: 10px"></div>
+    <div class="toast" id="toast" hidden>
+      <svg class="icon"><use href="#i-check" id="toastIcon" /></svg>
+      <span id="toastMsg"></span>
+    </div>
 
     <script src="options.js"></script>
   </body>

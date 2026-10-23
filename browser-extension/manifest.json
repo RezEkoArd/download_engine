@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "Kirim link dari browser ke aplikasi Download Engine yang jalan di komputer ini.",
   "permissions": ["contextMenus", "storage"],
-  "optional_permissions": ["cookies"],
+  "optional_permissions": ["cookies", "downloads"],
   "host_permissions": ["http://127.0.0.1:47283/*"],
   "optional_host_permissions": ["<all_urls>"],
   "background": {
@@ -12,7 +12,8 @@
   },
   "options_page": "options.html",
   "action": {
-    "default_title": "Download Engine"
+    "default_title": "Download Engine",
+    "default_popup": "popup.html"
   },
   "icons": {
     "32": "icons/32.png",

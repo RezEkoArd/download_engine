@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="ui.css" />
+  </head>
+  <body class="popup">
+    <svg hidden xmlns="http://www.w3.org/2000/svg">
+      <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12L13 2Z" /></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M11 3h2v8h4l-5 6-5-6h4V3Zm-7 16h16v2H4v-2Z" /></symbol>
+      <symbol id="i-gear" viewBox="0 0 24 24"><path d="m12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm9.4 4a7.6 7.6 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7.5 7.5 0 0 0-2-1.2L16.5 3h-4l-.4 2.6c-.7.3-1.4.7-2 1.2l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1c.6.5 1.3.9 2 1.2l.4 2.6h4l.4-2.6c.7-.3 1.4-.7 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2Z" /></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1.2 14.5-4.3-4.3 1.5-1.4 2.8 2.8 5.7-5.7 1.4 1.4-7.1 7.2Z" /></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm3.5 12.1-1.4 1.4L12 13.4l-2.1 2.1-1.4-1.4 2.1-2.1-2.1-2.1 1.4-1.4 2.1 2.1 2.1-2.1 1.4 1.4-2.1 2.1 2.1 2.1Z" /></symbol>
+    </svg>
+
+    <div class="popup-head">
+      <span class="mark"><svg class="icon"><use href="#i-bolt" /></svg></span>
+      <span>Download Engine</span>
+    </div>
+
+    <div class="popup-body">
+      <div class="status-badge" id="connBadge" style="justify-content: space-between">
+        <span style="display: flex; align-items: center; gap: 8px"><span class="dot"></span><span id="connText">Memeriksa…</span></span>
+        <span class="mono" style="font-size: 10px; opacity: 0.7">47283</span>
+      </div>
+
+      <div>
+        <label class="field" for="url">Kirim Link Manual</label>
+        <div class="field-row" style="margin-bottom: 8px">
+          <input id="url" type="url" placeholder="https://…" spellcheck="false" />
+        </div>
+        <button class="btn btn-primary btn-block" id="send"><svg class="icon"><use href="#i-download" /></svg> Unduh dengan Engine</button>
+      </div>
+
+      <div id="status"></div>
+
+      <div class="toggle-rows">
+        <div class="row">
+          <span>Ambil Alih Download</span>
+          <label class="switch">
+            <input type="checkbox" id="intercept" aria-label="Ambil alih download browser" />
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="row">
+          <span>Sertakan Cookie</span>
+          <label class="switch">
+            <input type="checkbox" id="cookies" aria-label="Sertakan cookie situs" />
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="popup-foot">
+        <button class="btn-link" id="openOptions"><svg class="icon"><use href="#i-gear" /></svg> Buka Pengaturan Lengkap</button>
+      </div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
