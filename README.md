@@ -33,7 +33,7 @@ Firefox dan Safari belum didukung. Edge memakai mesin yang sama dengan Chrome se
 
 ### Memasang
 
-Unduh **`Download Engine_0.1.0_x64-setup.exe`** dari halaman [Releases](https://github.com/RezEkoArd/download_engine/releases/latest), lalu jalankan. Tidak perlu memasang Rust, Node, atau apa pun — installer-nya sudah berisi semua yang dibutuhkan.
+Unduh **`Download.Engine_0.1.0_x64-setup.exe`** dari halaman [Releases](https://github.com/RezEkoArd/download_engine/releases/latest), lalu jalankan. Tidak perlu memasang Rust, Node, atau apa pun — installer-nya sudah berisi semua yang dibutuhkan.
 
 > **Windows akan menampilkan peringatan.** Layar biru bertuliskan *"Windows protected your PC"* muncul karena installer-nya belum ditandatangani sertifikat code-signing (sertifikat itu berbayar tahunan). Klik **More info** → **Run anyway**. Peringatan ini soal "penerbitnya tidak dikenal", bukan soal isi filenya.
 

@@ -4,7 +4,7 @@ Cara memakai Download Engine sehari-hari. Tidak perlu paham isi kodenya.
 
 > **Versi 0.1.0 jalan di Windows 10/11 saja**, dan extension browser-nya untuk **Chrome**. Aplikasinya sendiri tidak butuh browser apa pun — ia aplikasi desktop, bukan halaman web.
 
-Belum terpasang? Unduh `Download Engine_0.1.0_x64-setup.exe` dari [Releases](https://github.com/RezEkoArd/download_engine/releases/latest), atau ikuti [INSTALL.md](INSTALL.md) yang juga mencakup extension browser. Dokumen ini mengambil alih dari titik aplikasinya sudah bisa dibuka.
+Belum terpasang? Unduh `Download.Engine_0.1.0_x64-setup.exe` dari [Releases](https://github.com/RezEkoArd/download_engine/releases/latest), atau ikuti [INSTALL.md](INSTALL.md) yang juga mencakup extension browser. Dokumen ini mengambil alih dari titik aplikasinya sudah bisa dibuka.
 
 | Kalau yang kamu cari | Baca |
 | --- | --- |

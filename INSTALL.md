@@ -13,9 +13,9 @@ Ada dua bagian, dan **bagian 2 opsional**:
 
 ### Mengunduh installer
 
-Ambil **`Download Engine_0.1.0_x64-setup.exe`** dari halaman [Releases](https://github.com/RezEkoArd/download_engine/releases/latest), lalu jalankan. Ini pilihan yang dianjurkan: ia memasang untuk akun kamu sendiri, jadi tidak meminta hak administrator.
+Ambil **`Download.Engine_0.1.0_x64-setup.exe`** dari halaman [Releases](https://github.com/RezEkoArd/download_engine/releases/latest), lalu jalankan. Ini pilihan yang dianjurkan: ia memasang untuk akun kamu sendiri, jadi tidak meminta hak administrator.
 
-Di halaman yang sama ada `Download Engine_0.1.0_x64_en-US.msi`. Isinya aplikasi yang sama, bedanya ia memasang untuk seluruh komputer dan akan meminta admin — pakai itu hanya kalau kamu memang perlu memasangnya untuk semua pengguna. Pilih salah satu, jangan dua-duanya.
+Di halaman yang sama ada `Download.Engine_0.1.0_x64_en-US.msi`. Isinya aplikasi yang sama, bedanya ia memasang untuk seluruh komputer dan akan meminta admin — pakai itu hanya kalau kamu memang perlu memasangnya untuk semua pengguna. Pilih salah satu, jangan dua-duanya.
 
 Windows SmartScreen kemungkinan menampilkan **"Windows protected your PC"**. Itu karena installer-nya belum ditandatangani secara digital, bukan karena isinya bermasalah. Klik **More info → Run anyway** kalau kamu memang yang membuat atau menerima file ini dari sumber yang kamu percaya.
 
