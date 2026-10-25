@@ -2,7 +2,9 @@
 
 Cara memakai Download Engine sehari-hari. Tidak perlu paham isi kodenya.
 
-Belum terpasang? Mulai dari [INSTALL.md](INSTALL.md) — memasang aplikasi dan (opsional) extension browser. Dokumen ini mengambil alih dari titik aplikasinya sudah bisa dibuka.
+> **Versi 0.1.0 jalan di Windows 10/11 saja**, dan extension browser-nya untuk **Chrome**. Aplikasinya sendiri tidak butuh browser apa pun — ia aplikasi desktop, bukan halaman web.
+
+Belum terpasang? Unduh `Download Engine_0.1.0_x64-setup.exe` dari [Releases](https://github.com/RezEkoArd/download_engine/releases/latest), atau ikuti [INSTALL.md](INSTALL.md) yang juga mencakup extension browser. Dokumen ini mengambil alih dari titik aplikasinya sudah bisa dibuka.
 
 | Kalau yang kamu cari | Baca |
 | --- | --- |
@@ -94,7 +96,7 @@ Nyalakan di Settings, lalu setiap link yang kamu copy ditawarkan sendiri. Lihat 
 
 ### 4. Dari browser
 
-Lewat extension Chrome/Edge. Lihat [Download dari browser](#download-dari-browser).
+Lewat extension Chrome. Lihat [Download dari browser](#download-dari-browser).
 
 ---
 
@@ -258,7 +260,7 @@ Yang perlu diketahui:
 
 ## Download dari browser
 
-Butuh extension Chrome/Edge — pemasangan dan pairing token-nya di [browser-extension/README.md](browser-extension/README.md). Pairing wajib sekali di awal: tanpa token, permintaan ditolak.
+Butuh extension Chrome — pemasangan dan pairing token-nya di [browser-extension/README.md](browser-extension/README.md). Pairing wajib sekali di awal: tanpa token, permintaan ditolak.
 
 Nyalakan dulu **Terima Link dari Extension Browser** di Settings. Aplikasi lalu membuka listener di `127.0.0.1:47283`, dan selama toggle-nya mati tidak ada socket yang dibuka sama sekali.
 

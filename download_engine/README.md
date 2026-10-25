@@ -235,4 +235,4 @@ Tiga hal yang dijamin:
 - [x] Clipboard monitor (auto-detect link download)
 - [x] Header per job (`Cookie`/`Referer`/`User-Agent`) — fondasi integrasi browser
 - [x] HTTP listener localhost + pairing token (8b) — ada di crate GUI, bukan di engine
-- [x] Extension Chrome/Edge: menu klik-kanan (8c) — ada di `browser-extension/`
+- [x] Extension Chrome: menu klik-kanan (8c) — ada di `browser-extension/`

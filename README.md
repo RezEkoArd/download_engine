@@ -2,6 +2,8 @@
 
 Download manager bergaya IDM: engine download tersegmentasi di Rust, plus aplikasi desktop Tauri + React di atasnya.
 
+> **Versi 0.1.0: Windows 10/11 saja.** Extension browser-nya untuk Chrome. Unduh installer `.exe` di [Releases](https://github.com/RezEkoArd/download_engine/releases/latest).
+
 Satu repo, dua crate yang digabung lewat Cargo workspace:
 
 | Crate | Isi | Dokumentasi |
@@ -16,13 +18,36 @@ Di luar workspace Cargo ada satu komponen lagi:
 
 | Folder | Isi | Dokumentasi |
 | --- | --- | --- |
-| `browser-extension` | Extension Chrome/Edge (MV3). Menu klik-kanan yang mengirim link ke aplikasi lewat bridge loopback-nya | [browser-extension/README.md](browser-extension/README.md) |
+| `browser-extension` | Extension Chrome (MV3). Menu klik-kanan yang mengirim link ke aplikasi lewat bridge loopback-nya | [browser-extension/README.md](browser-extension/README.md) |
 
 ## Untuk Pengguna
 
-Belum ada rilis siap-pakai, jadi installer-nya dibangun sendiri sekali. Setelah itu aplikasinya terpasang seperti aplikasi Windows biasa dan tidak butuh toolchain lagi untuk dijalankan.
+### Yang didukung versi ini
 
-Siapkan dulu [Setup Environment](#setup-environment) di bawah, lalu:
+| | Versi 0.1.0 |
+| --- | --- |
+| **Sistem operasi** | **Windows 10/11 (64-bit) saja.** Belum ada build untuk Linux atau macOS |
+| **Browser** | **Chrome** — hanya untuk fitur kirim-link dari browser, dan itu pun opsional. Aplikasinya sendiri tidak butuh browser apa pun |
+
+Firefox dan Safari belum didukung. Edge memakai mesin yang sama dengan Chrome sehingga extension-nya ikut jalan, tapi yang diuji untuk versi ini adalah Chrome.
+
+### Memasang
+
+Unduh **`Download Engine_0.1.0_x64-setup.exe`** dari halaman [Releases](https://github.com/RezEkoArd/download_engine/releases/latest), lalu jalankan. Tidak perlu memasang Rust, Node, atau apa pun — installer-nya sudah berisi semua yang dibutuhkan.
+
+> **Windows akan menampilkan peringatan.** Layar biru bertuliskan *"Windows protected your PC"* muncul karena installer-nya belum ditandatangani sertifikat code-signing (sertifikat itu berbayar tahunan). Klik **More info** → **Run anyway**. Peringatan ini soal "penerbitnya tidak dikenal", bukan soal isi filenya.
+
+Versi `.msi` juga tersedia di halaman yang sama. Bedanya: `.exe` memasang untuk akun kamu sendiri tanpa minta hak administrator, sedangkan `.msi` memasang untuk seluruh komputer dan akan meminta admin. Pakai `.exe` kecuali kamu memang perlu memasangnya lewat Group Policy atau untuk semua pengguna di satu komputer.
+
+### Setelah terpasang
+
+Yang perlu dibaca cuma satu dokumen: **[PENGGUNAAN.md](PENGGUNAAN.md)** — menambah download, nama file dari server, status job, aksi borongan, Settings, tray, clipboard monitor, dan bridge browser semuanya di situ, berikut daftar gejala kalau ada yang berperilaku aneh.
+
+Mau kirim link langsung dari Chrome? Pasang extension-nya: [browser-extension/README.md](browser-extension/README.md) — ada langkah pairing token di situ, dan itu wajib sekali di awal karena bridge menolak permintaan tanpa token.
+
+### Membangun installer sendiri
+
+Tidak perlu kalau kamu cuma mau memakai aplikasinya — bagian ini untuk yang ingin membangun dari source. Siapkan [Setup Environment](#setup-environment) di bawah, lalu:
 
 ```powershell
 cd download_engine_gui
@@ -30,13 +55,9 @@ pnpm install
 pnpm tauri build
 ```
 
-Hasilnya ada di `target/release/bundle/` — installer NSIS (`.exe`) dan MSI, karena `tauri.conf.json` memakai `"targets": "all"`. Jalankan salah satunya; keduanya memasang aplikasi yang sama.
+Hasilnya mendarat di `target/release/bundle/` — NSIS (`.exe`) dan MSI, karena `tauri.conf.json` memakai `"targets": "all"`.
 
-> Build release memakai `lto = true` dan `codegen-units = 1`, jadi ini jauh lebih lama daripada `pnpm tauri dev` — hitungan belasan menit, bukan detik. Untuk sekadar mencoba, `pnpm tauri dev` lebih cepat.
-
-Setelah terpasang, yang perlu dibaca cuma satu dokumen: **[PENGGUNAAN.md](PENGGUNAAN.md)** — menambah download, nama file dari server, status job, aksi borongan, Settings, tray, clipboard monitor, dan bridge browser semuanya di situ, berikut daftar gejala kalau ada yang berperilaku aneh.
-
-Mau kirim link langsung dari browser? Pasang extension-nya: [browser-extension/README.md](browser-extension/README.md) — ada langkah pairing token di situ, dan itu wajib sekali di awal karena bridge menolak permintaan tanpa token.
+> Build release memakai `lto = true` dan `codegen-units = 1`, jadi jauh lebih lama daripada `pnpm tauri dev` — hitungan menit, bukan detik. Untuk sekadar mencoba, `pnpm tauri dev` lebih cepat.
 
 ## Setup Environment
 
@@ -133,7 +154,7 @@ download_engine_gui/          # aplikasi desktop
   src-tauri/src/bridge.rs     # listener HTTP loopback untuk extension browser
   src-tauri/src/persistence.rs# baca/tulis app-state.json
 
-browser-extension/            # extension Chrome/Edge (MV3)
+browser-extension/            # extension Chrome (MV3)
   background.js               # menu klik-kanan, intersepsi download, kirim ke bridge
   options.html / options.js   # pairing token, izin opsional, log intersepsi
   popup.html / popup.js       # popup toolbar: status + kirim link manual
@@ -163,5 +184,5 @@ browser-extension/            # extension Chrome/Edge (MV3)
 - [x] Clipboard monitor (auto-detect link, opt-in)
 - [x] Header per job (`Cookie`/`Referer`/`User-Agent`) — fondasi integrasi browser
 - [x] HTTP listener localhost + pairing token (opt-in, `127.0.0.1:47283`)
-- [x] Extension Chrome/Edge: menu klik-kanan "Download with Download Engine"
+- [x] Extension Chrome: menu klik-kanan "Download with Download Engine"
 - [x] Extension mengambil alih download browser (opt-in, izin `downloads`) — menangkap URL final setelah redirect, yang tidak bisa didapat dari klik-kanan

@@ -1,27 +1,29 @@
 # Panduan Instalasi — Download Engine
 
-Panduan untuk memasang dan memakai Download Engine di Windows. Tidak perlu paham isi kodenya.
+Panduan untuk memasang dan memakai Download Engine di Windows. Tidak perlu paham isi kodenya. Versi 0.1.0 ini **hanya untuk Windows 10/11 (64-bit)**, dan extension browser-nya **hanya untuk Chrome**.
 
 Ada dua bagian, dan **bagian 2 opsional**:
 
 1. **Aplikasi desktop** — wajib. Ini yang benar-benar mengunduh file.
-2. **Extension browser** — opsional, supaya link bisa dikirim langsung dari Chrome/Edge.
+2. **Extension browser** — opsional, supaya link bisa dikirim langsung dari Chrome.
 
 ---
 
 ## 1. Memasang aplikasi desktop
 
-### Kalau kamu punya installer-nya
+### Mengunduh installer
 
-Jalankan `Download Engine_<versi>_x64-setup.exe` (NSIS) **atau** `Download Engine_<versi>_x64_en-US.msi`. Keduanya memasang aplikasi yang sama — pilih salah satu, jangan dua-duanya.
+Ambil **`Download Engine_0.1.0_x64-setup.exe`** dari halaman [Releases](https://github.com/RezEkoArd/download_engine/releases/latest), lalu jalankan. Ini pilihan yang dianjurkan: ia memasang untuk akun kamu sendiri, jadi tidak meminta hak administrator.
+
+Di halaman yang sama ada `Download Engine_0.1.0_x64_en-US.msi`. Isinya aplikasi yang sama, bedanya ia memasang untuk seluruh komputer dan akan meminta admin — pakai itu hanya kalau kamu memang perlu memasangnya untuk semua pengguna. Pilih salah satu, jangan dua-duanya.
 
 Windows SmartScreen kemungkinan menampilkan **"Windows protected your PC"**. Itu karena installer-nya belum ditandatangani secara digital, bukan karena isinya bermasalah. Klik **More info → Run anyway** kalau kamu memang yang membuat atau menerima file ini dari sumber yang kamu percaya.
 
 Setelah terpasang, aplikasinya muncul di Start Menu sebagai **Download Engine**. Tidak perlu Rust, Node, atau toolchain apa pun untuk menjalankannya.
 
-### Kalau kamu harus membangunnya sendiri
+### Kalau kamu ingin membangunnya sendiri
 
-Belum ada rilis siap-pakai, jadi installer-nya dibuat sekali dari source. Yang dibutuhkan: **Rust**, **Node.js 20+**, dan **pnpm**.
+Tidak perlu kalau kamu cuma mau memakai aplikasinya — cukup unduh installer di atas. Untuk membangun dari source, yang dibutuhkan: **Rust**, **Node.js 20+**, dan **pnpm**.
 
 ```powershell
 # Node 20+ wajib — Vite 8 memakai Rolldown yang butuh API `node:util` baru.

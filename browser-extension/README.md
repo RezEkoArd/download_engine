@@ -1,6 +1,6 @@
 # Download Engine — Extension Browser
 
-Extension Chrome/Edge yang menambahkan menu klik-kanan **"Download with Download Engine"**. Link yang kamu pilih dikirim ke aplikasi desktop yang sedang jalan di komputer yang sama, lewat bridge HTTP loopback-nya.
+Extension Chrome yang menambahkan menu klik-kanan **"Download with Download Engine"**. Link yang kamu pilih dikirim ke aplikasi desktop yang sedang jalan di komputer yang sama, lewat bridge HTTP loopback-nya.
 
 Bukan sebuah downloader sendiri. Yang dikerjakannya hanya: ambil URL, kumpulkan konteks request yang mungkin diperlukan, kirim satu POST. Semua urusan segmen, resume, dan penulisan file tetap di engine Rust.
 
@@ -127,7 +127,21 @@ Perbedaannya dengan menerima nama dari extension: server memang pihak yang sudah
 
 ## Browser lain
 
-Dites untuk **Chrome** dan **Edge**. Manifest-nya MV3 standar dan `moz-extension://` juga sudah diterima bridge, jadi Firefox kemungkinan jalan — tapi belum dicoba, dan `chrome.permissions` di Firefox punya beberapa perbedaan perilaku.
+Versi 0.1.0 ini **dibuat dan diuji untuk Chrome**.
+
+| Browser | Status |
+| --- | --- |
+| **Chrome** | didukung, diuji |
+| **Edge** | memakai mesin yang sama dan origin-nya juga `chrome-extension://`, jadi ikut jalan — tapi bukan yang diuji untuk versi ini |
+| Chromium lain (Brave, Opera, Vivaldi, Arc) | kemungkinan besar jalan dengan alasan yang sama, belum dicoba |
+| **Firefox** | **belum jalan** — lihat di bawah |
+| **Safari** | tidak. Perlu dikonversi lewat Xcode, dan bridge menolak `safari-web-extension://` |
+
+### Kenapa Firefox belum jalan
+
+Manifest-nya memakai `"background": { "service_worker": "background.js" }`. Firefox MV3 tidak mendukung `background.service_worker` — ia memakai event page lewat `background.scripts`, jadi extension-nya gagal dimuat sejak awal, bukan sekadar berbeda perilaku.
+
+Sisi aplikasinya justru sudah siap: `moz-extension://` sudah ada di allowlist bridge beserta tesnya, dan seluruh kode extension memakai `chrome.*` yang di Firefox sudah ter-alias ke `browser.*`. Yang kurang tinggal `background.scripts` di manifest dan `browser_specific_settings.gecko.id` — plus pengujian sungguhan di Firefox, karena `chrome.permissions` di sana punya beberapa perbedaan perilaku.
 
 ## Keamanan bridge
 
