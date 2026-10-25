@@ -923,7 +923,7 @@ function App() {
             <i className="fa-solid fa-bolt" />
           </div>
           <span className="font-semibold tracking-wide text-gray-900 dark:text-gray-100">Download Engine</span>
-          <span className="text-[10px] bg-brand-500/10 text-brand-600 dark:text-brand-400 px-1.5 py-0.5 rounded border border-brand-500/20 font-mono">v0.1.0 (Rust Core)</span>
+          <span className="text-[10px] bg-brand-500/10 text-brand-600 dark:text-brand-400 px-1.5 py-0.5 rounded border border-brand-500/20 font-mono">v{__APP_VERSION__} (Rust Core)</span>
         </div>
         <div className="flex items-center space-x-3">
           <button onClick={() => setDark((v) => !v)} className="text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white transition" title="Toggle Theme">

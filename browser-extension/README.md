@@ -8,6 +8,8 @@ Bukan sebuah downloader sendiri. Yang dikerjakannya hanya: ambil URL, kumpulkan 
 
 Belum di Web Store, jadi dipasang sebagai unpacked extension.
 
+Kalau kamu memasang dari rilis (bukan dari clone repo): unduh `browser-extension.zip` di halaman [Releases](https://github.com/RezEkoArd/download_engine/releases/latest), lalu ekstrak ke folder yang tidak akan kamu hapus — Chrome memuatnya dari lokasi itu tiap kali start, bukan menyalinnya.
+
 1. Buka `chrome://extensions` (atau `edge://extensions`).
 2. Nyalakan **Developer mode**.
 3. **Load unpacked** → pilih folder `browser-extension` ini.
@@ -127,7 +129,7 @@ Perbedaannya dengan menerima nama dari extension: server memang pihak yang sudah
 
 ## Browser lain
 
-Versi 0.1.0 ini **dibuat dan diuji untuk Chrome**.
+Versi ini **dibuat dan diuji untuk Chrome**.
 
 | Browser | Status |
 | --- | --- |

@@ -2,7 +2,7 @@
 
 Download manager bergaya IDM: engine download tersegmentasi di Rust, plus aplikasi desktop Tauri + React di atasnya.
 
-> **Versi 0.1.0: Windows 10/11 saja.** Extension browser-nya untuk Chrome. Unduh installer `.exe` di [Releases](https://github.com/RezEkoArd/download_engine/releases/latest).
+> **Windows 10/11 saja.** Extension browser-nya untuk Chrome. Unduh installer `.exe` di [Releases](https://github.com/RezEkoArd/download_engine/releases/latest).
 
 Satu repo, dua crate yang digabung lewat Cargo workspace:
 
@@ -24,7 +24,7 @@ Di luar workspace Cargo ada satu komponen lagi:
 
 ### Yang didukung versi ini
 
-| | Versi 0.1.0 |
+| | Versi ini |
 | --- | --- |
 | **Sistem operasi** | **Windows 10/11 (64-bit) saja.** Belum ada build untuk Linux atau macOS |
 | **Browser** | **Chrome** — hanya untuk fitur kirim-link dari browser, dan itu pun opsional. Aplikasinya sendiri tidak butuh browser apa pun |
@@ -33,7 +33,7 @@ Firefox dan Safari belum didukung. Edge memakai mesin yang sama dengan Chrome se
 
 ### Memasang
 
-Unduh **`Download.Engine_0.1.0_x64-setup.exe`** dari halaman [Releases](https://github.com/RezEkoArd/download_engine/releases/latest), lalu jalankan. Tidak perlu memasang Rust, Node, atau apa pun — installer-nya sudah berisi semua yang dibutuhkan.
+Unduh berkas **`.exe`** (namanya berakhiran `_x64-setup.exe`) dari halaman [Releases](https://github.com/RezEkoArd/download_engine/releases/latest), lalu jalankan. Tidak perlu memasang Rust, Node, atau apa pun — installer-nya sudah berisi semua yang dibutuhkan.
 
 > **Windows akan menampilkan peringatan.** Layar biru bertuliskan *"Windows protected your PC"* muncul karena installer-nya belum ditandatangani sertifikat code-signing (sertifikat itu berbayar tahunan). Klik **More info** → **Run anyway**. Peringatan ini soal "penerbitnya tidak dikenal", bukan soal isi filenya.
 
@@ -43,7 +43,7 @@ Versi `.msi` juga tersedia di halaman yang sama. Bedanya: `.exe` memasang untuk 
 
 Yang perlu dibaca cuma satu dokumen: **[PENGGUNAAN.md](PENGGUNAAN.md)** — menambah download, nama file dari server, status job, aksi borongan, Settings, tray, clipboard monitor, dan bridge browser semuanya di situ, berikut daftar gejala kalau ada yang berperilaku aneh.
 
-Mau kirim link langsung dari Chrome? Pasang extension-nya: [browser-extension/README.md](browser-extension/README.md) — ada langkah pairing token di situ, dan itu wajib sekali di awal karena bridge menolak permintaan tanpa token.
+**Opsional** — aplikasinya sudah jalan penuh tanpa ini. Mau kirim link langsung dari Chrome? Unduh `browser-extension.zip` dari [Releases](https://github.com/RezEkoArd/download_engine/releases/latest), ekstrak ke folder permanen, lalu ikuti [browser-extension/README.md](browser-extension/README.md) — ada langkah pairing token di situ, dan itu wajib sekali di awal karena bridge menolak permintaan tanpa token.
 
 ### Membangun installer sendiri
 

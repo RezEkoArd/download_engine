@@ -1,8 +1,14 @@
 import { useEffect, useState } from "react";
 import { CLIPBOARD_POLL_MS } from "../types";
 import type { AppSettings, BridgeInfo } from "../types";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { bridgeInfo } from "../lib/bridge";
 import { copyToClipboard } from "../lib/jobActions";
+
+// Where the extension zip lives. Hardcoded rather than built from the app
+// version: /latest always points at the newest release, so this line does not
+// go stale when the version bumps.
+const RELEASES_URL = "https://github.com/RezEkoArd/download_engine/releases/latest";
 
 interface Props {
   settings: AppSettings;
@@ -216,6 +222,19 @@ export default function SettingsModal({ settings, onClose, onSave, onBrowse }: P
                 </div>
                 <span className="block text-[10px] text-gray-400">
                   Tempelkan token ini di halaman opsi extension. Jangan dibagikan: siapa pun di komputer ini yang punya token bisa menambahkan download.
+                </span>
+                <span className="block text-[10px] text-gray-400">
+                  Belum punya extension-nya?{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void openUrl(RELEASES_URL).catch(() => {});
+                    }}
+                    className="text-brand-600 dark:text-brand-400 hover:underline"
+                  >
+                    Unduh <span className="font-mono">browser-extension.zip</span> di halaman Releases
+                  </button>
+                  , ekstrak, lalu muat lewat <span className="font-mono">chrome://extensions</span> &rarr; Load unpacked.
                 </span>
               </div>
             )}

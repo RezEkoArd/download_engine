@@ -1,6 +1,6 @@
 [package]
 name = "bridge_guard"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Authorisation checks for the browser bridge's loopback endpoint"
 

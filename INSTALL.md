@@ -1,6 +1,6 @@
 # Panduan Instalasi — Download Engine
 
-Panduan untuk memasang dan memakai Download Engine di Windows. Tidak perlu paham isi kodenya. Versi 0.1.0 ini **hanya untuk Windows 10/11 (64-bit)**, dan extension browser-nya **hanya untuk Chrome**.
+Panduan untuk memasang dan memakai Download Engine di Windows. Tidak perlu paham isi kodenya. Versi ini **hanya untuk Windows 10/11 (64-bit)**, dan extension browser-nya **hanya untuk Chrome**.
 
 Ada dua bagian, dan **bagian 2 opsional**:
 
@@ -13,9 +13,9 @@ Ada dua bagian, dan **bagian 2 opsional**:
 
 ### Mengunduh installer
 
-Ambil **`Download.Engine_0.1.0_x64-setup.exe`** dari halaman [Releases](https://github.com/RezEkoArd/download_engine/releases/latest), lalu jalankan. Ini pilihan yang dianjurkan: ia memasang untuk akun kamu sendiri, jadi tidak meminta hak administrator.
+Ambil berkas **`.exe`** (namanya berakhiran `_x64-setup.exe`) dari halaman [Releases](https://github.com/RezEkoArd/download_engine/releases/latest), lalu jalankan. Ini pilihan yang dianjurkan: ia memasang untuk akun kamu sendiri, jadi tidak meminta hak administrator.
 
-Di halaman yang sama ada `Download.Engine_0.1.0_x64_en-US.msi`. Isinya aplikasi yang sama, bedanya ia memasang untuk seluruh komputer dan akan meminta admin — pakai itu hanya kalau kamu memang perlu memasangnya untuk semua pengguna. Pilih salah satu, jangan dua-duanya.
+Di halaman yang sama ada berkas `.msi`. Isinya aplikasi yang sama, bedanya ia memasang untuk seluruh komputer dan akan meminta admin — pakai itu hanya kalau kamu memang perlu memasangnya untuk semua pengguna. Pilih salah satu, jangan dua-duanya.
 
 Windows SmartScreen kemungkinan menampilkan **"Windows protected your PC"**. Itu karena installer-nya belum ditandatangani secara digital, bukan karena isinya bermasalah. Klik **More info → Run anyway** kalau kamu memang yang membuat atau menerima file ini dari sumber yang kamu percaya.
 
@@ -56,6 +56,14 @@ Hasilnya ada di `target/release/bundle/`. Ini bukan build cepat: `lto = true` da
 
 ## 2. Memasang extension browser
 
+Bagian ini **opsional**. Aplikasinya sudah bisa dipakai penuh tanpa extension — lewat tombol **New Download**, drag-and-drop link, dan clipboard monitor. Extension hanya menambah satu jalur lagi: mengirim link langsung dari Chrome tanpa menyalin URL-nya.
+
+### Mengunduh extension-nya
+
+Ambil **`browser-extension.zip`** dari halaman [Releases](https://github.com/RezEkoArd/download_engine/releases/latest) yang sama dengan installer tadi. Ekstrak ke tempat yang **permanen** — misalnya `Documents`, sehingga foldernya mendarat sebagai `Documents\browser-extension` — bukan ke Downloads atau Temp yang biasa kamu bersihkan.
+
+Alasannya ada di poin kedua di bawah: Chrome memuat extension dari lokasi itu setiap kali start. Kalau foldernya kamu hapus, extension-nya ikut mati.
+
 Extension ini **belum ada di Chrome Web Store**, jadi dipasang sebagai *unpacked extension* — mode pengembang. Konsekuensinya ada dua, dan keduanya normal:
 
 - Chrome akan menampilkan peringatan **"Disable developer mode extensions"** setiap kali dibuka. Jangan hapus extension-nya; tutup saja peringatannya.
@@ -65,7 +73,7 @@ Extension ini **belum ada di Chrome Web Store**, jadi dipasang sebagai *unpacked
 
 1. Buka `chrome://extensions` (atau `edge://extensions`).
 2. Nyalakan **Developer mode** di pojok kanan atas.
-3. **Load unpacked** → pilih folder `browser-extension`.
+3. **Load unpacked** → pilih folder `browser-extension` hasil ekstrak tadi (yang berisi `manifest.json`).
 4. Sematkan ikonnya ke toolbar lewat ikon puzzle 🧩 agar mudah dijangkau.
 
 ### Pairing — wajib, sekali di awal

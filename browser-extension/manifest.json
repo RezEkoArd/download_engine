@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Download Engine",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Kirim link dari browser ke aplikasi Download Engine yang jalan di komputer ini.",
   "permissions": ["contextMenus", "storage"],
   "optional_permissions": ["cookies", "downloads"],

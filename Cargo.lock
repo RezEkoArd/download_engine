@@ -388,7 +388,7 @@ dependencies = [
 
 [[package]]
 name = "bridge_guard"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "getrandom 0.3.4",
  "http",
@@ -1053,7 +1053,7 @@ checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 
 [[package]]
 name = "download_engine"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1068,7 +1068,7 @@ dependencies = [
 
 [[package]]
 name = "download_engine_gui"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bridge_guard",
  "download_engine",
