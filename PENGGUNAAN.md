@@ -26,6 +26,8 @@ Belum terpasang? Unduh berkas `.exe` dari [Releases](https://github.com/RezEkoAr
 - [Aksi borongan](#aksi-borongan)
 - [Mengatur kecepatan & jumlah download bersamaan](#mengatur-kecepatan--jumlah-download-bersamaan)
 - [Settings](#settings)
+  - [Tema dan warna aksen](#tema-dan-warna-aksen)
+- [Notch](#notch)
 - [Clipboard monitor](#clipboard-monitor)
 - [Download dari browser](#download-dari-browser)
 - [Tray & menutup aplikasi](#tray--menutup-aplikasi)
@@ -41,13 +43,15 @@ Tata letaknya mengikuti gaya IDM:
 
 | Bagian | Isi |
 | --- | --- |
-| **Title bar** | nama aplikasi, toggle tema terang/gelap, minimize/maximize/close |
-| **Toolbar** | **New Download**, **Start All Queued**, **Pause All**, **Speed Limit**, kolom **Search**, tombol **Settings** |
-| **Sidebar kiri** | filter berdasarkan status (dengan jumlahnya) dan kategori file — compressed, documents, video, programs. Di bawahnya: kecepatan total, jumlah segmen aktif, dan pemakaian slot concurrency |
-| **Tabel tengah** | satu baris per job: nama file, ukuran, status, progress, kecepatan, ETA, tombol aksi |
+| **Title bar** | nama aplikasi, tombol pengaturan, tombol tema, minimize/maximize/close |
+| **Judul halaman** | mengikuti filter yang sedang aktif — "Semua Download", "Berjalan", "Arsip (zip, rar)", dan seterusnya; kolom **Cari download** ada di sebelah kanannya |
+| **Toolbar** | **Tambah Download**, **Mulai Semua**, **Jeda Semua**, **Hapus** (membuang baris yang dicentang), **Batas kecepatan** |
+| **Sidebar kiri** | filter status dengan jumlahnya masing-masing (Semua Download, Berjalan, Antrean, Dijeda, Terputus, Selesai, Dibatalkan, Gagal), lalu grup **Kategori** (Semua Jenis, Arsip, Dokumen, Video & Media, Aplikasi). Filter yang aktif ditandai garis warna aksen di tepi kiri. Paling bawah: tombol **Pengaturan** |
+| **Tabel tengah** | enam kolom: kotak centang, **Nama file** (ikon berwarna per jenis berkas, dengan progress bar di bawah namanya), **Ukuran** (terunduh / total), **Kecepatan**, **Sisa waktu** (berisi lencana status kalau job-nya tidak sedang berjalan), **Aksi** |
 | **Inspector** | panel kanan, muncul saat sebuah baris diklik |
+| **Footer** | kecepatan total, jumlah download aktif berbanding slot concurrency, jumlah segmen yang sedang bekerja, dan jumlah baris di daftar |
 
-Toggle tema tersimpan antar sesi dan **tidak** mengikuti tema Windows — toggle inilah yang menentukan.
+Tombol tema di title bar berputar Terang → Gelap → Ikut sistem. Pilihannya tersimpan antar sesi; hanya mode **Ikut sistem** yang mengikuti tema Windows.
 
 ---
 
@@ -55,9 +59,9 @@ Toggle tema tersimpan antar sesi dan **tidak** mengikuti tema Windows — toggle
 
 Ada empat jalan, semuanya berakhir di daftar job yang sama.
 
-### 1. Form New Download
+### 1. Form Tambah Download
 
-**New Download** di toolbar membuka form:
+**Tambah Download** di toolbar membuka form:
 
 | Field | Keterangan |
 | --- | --- |
@@ -83,7 +87,7 @@ Begitu job masuk, URL-nya langsung di-probe untuk mengambil ukuran file, dukunga
 
 Tarik link dari browser (atau teks yang memuat URL) ke mana saja di jendela aplikasi. Overlay muncul saat drag masuk, dan yang terjadi setelah dilepas tergantung jumlahnya:
 
-- **Satu link** → form New Download terbuka dengan URL-nya sudah terisi, jadi drop yang tidak sengaja masih bisa dibatalkan atau disesuaikan dulu.
+- **Satu link** → form Tambah Download terbuka dengan URL-nya sudah terisi, jadi drop yang tidak sengaja masih bisa dibatalkan atau disesuaikan dulu.
 - **Beberapa link** → semuanya langsung masuk queue dengan default dari Settings, karena form hanya bisa menampung satu URL.
 
 Hanya `http` dan `https` yang diterima. URL kembar dalam satu drop dibuang, dan link yang sudah ada di daftar tidak ikut masuk — jumlah yang dilewati muncul sebagai notifikasi kecil di kanan bawah.
@@ -216,11 +220,11 @@ Ada tiga pengatur yang berlapis:
 
 | Pengatur | Tempat | Cakupan |
 | --- | --- | --- |
-| **Bandwidth Limit** | form New Download | satu job itu saja |
-| **Speed Limit** | toolbar | gabungan **semua** download sekaligus |
+| **Bandwidth Limit** | form Tambah Download | satu job itu saja |
+| **Batas kecepatan** | toolbar | gabungan **semua** download sekaligus |
 | **Concurrency** | Settings | berapa job boleh aktif bersamaan |
 
-Yang paling ketat yang berlaku. **Speed Limit** di toolbar bisa diubah saat download sedang jalan dan langsung berlaku tanpa perlu restart job.
+Yang paling ketat yang berlaku. **Batas kecepatan** di toolbar bisa diubah saat download sedang jalan dan langsung berlaku tanpa perlu restart job.
 
 Soal **Connections**: engine memecah file jadi beberapa koneksi paralel, dan tiap koneksi meminta potongan 8 MiB sekaligus, bukan satu range raksasa. Angka besar tidak selalu lebih cepat — banyak server membatasi jumlah koneksi per klien, dan beberapa menolak range besar. Kalau sebuah situs sering gagal, turunkan Connections-nya lebih dulu.
 
@@ -230,16 +234,56 @@ Job **Paused** tetap menghitung terhadap batas Concurrency: koneksinya cuma dipa
 
 ## Settings
 
-| Setting | Pengaruh |
+Ikon gerigi di kanan atas membuka halaman Pengaturan — satu layar penuh dengan enam bagian di kiri, bukan dialog. **Tidak ada tombol Save**: setiap perubahan langsung berlaku dan langsung tersimpan. **Kembalikan default** di kanan bawah mengembalikan semuanya kecuali folder tujuan, yang dibiarkan karena ia diisi dari folder Downloads-mu saat pertama jalan.
+
+| Bagian | Isi |
 | --- | --- |
-| **Default Segments** | nilai awal Connections di form |
-| **Default Limit** | nilai awal Bandwidth Limit di form |
-| **Default Output Dir** | folder tujuan kalau form dibiarkan kosong. Terisi otomatis ke `<Downloads>\Download-Engine` saat pertama jalan |
-| **Concurrency** | berapa job boleh aktif bersamaan. Job *Paused* tetap menghitung |
-| **Max Retries** | percobaan ulang per segmen sebelum job dinyatakan gagal |
-| **User Agent** | mengganti User-Agent. Berguna untuk server yang menolak client tak dikenal |
-| **Pantau Clipboard** | aktifkan clipboard monitor. Default **mati** |
-| **Terima Link dari Extension Browser** | aktifkan bridge HTTP lokal. Default **mati**. Di sini juga token pairing-nya ditampilkan |
+| **Umum** | Concurrency (berapa job aktif bersamaan — job *Paused* tetap menghitung), percobaan ulang per segmen, dan Pantau Clipboard |
+| **Download** | folder tujuan, jumlah koneksi paralel, batas kecepatan, dan User-Agent — semuanya nilai awal untuk form Tambah Download |
+| **Tampilan** | tema dan warna aksen. Lihat di bawah |
+| **Notch & Notifikasi** | menyalakan notch dan memilih apakah ia tetap tampak saat menganggur |
+| **Integrasi Browser** | menyalakan bridge HTTP lokal dan menampilkan token pairing-nya |
+| **Tentang** | versi, dan tautan ke kode sumber serta halaman Releases |
+
+### Tema dan warna aksen
+
+**Tema aplikasi** punya tiga pilihan: Terang, Gelap, dan **Ikuti Sistem**. Yang terakhir benar-benar mengikuti: kalau Windows berganti tema di tengah hari, aplikasinya ikut berganti saat itu juga, bukan menunggu dijalankan ulang.
+
+**Warna aksen** — Biru, Teal, Ungu, Oranye — mengganti warna tombol, bar progres, menu aktif, dan angka persen. Keduanya berlaku ke **seluruh aplikasi termasuk notch**, jadi strip di tepi atas layar tidak lagi memakai palet sendiri.
+
+Tombol matahari/bulan di title bar tetap ada sebagai jalan pintas Terang ⇄ Gelap. Menekannya memilih tema secara eksplisit — artinya ia juga mematikan "Ikuti Sistem", karena memilih sendiri dan mengikuti OS tidak bisa dua-duanya.
+
+---
+
+## Notch
+
+Strip yang menempel di **tepi atas layar** selama ada download berjalan, selalu di atas jendela lain. Isinya nama berkas, persen, kecepatan, dan sisa waktu.
+
+Ia muncul sendiri saat download pertama mulai dan hilang sendiri saat tidak ada lagi yang berjalan. Saat sebuah download selesai, ia berganti sebentar jadi pemberitahuan **"Download selesai"** dengan tombol **Buka Folder**, lalu menghilang setelah delapan detik.
+
+Kalau ada lebih dari satu download berjalan, yang ditampilkan adalah **yang paling lama berjalan**, dengan keterangan `+N lagi` di sampingnya. Dipilih begitu, bukan yang progresnya paling jauh, supaya tampilannya tidak berganti-ganti berkas setiap kali satu menyalip yang lain.
+
+### Memindahkannya
+
+**Tarik notch-nya** ke kiri atau kanan. Ia selalu menempel di tepi atas, jadi yang bisa kamu atur cuma posisi mendatarnya — termasuk **menyeretnya ke monitor lain**: notch mengikuti kursor melewati batas layar dan menempel di tepi atas monitor tempat kursor berada saat kamu lepas. Posisinya diingat dan dipakai lagi saat berikutnya ia muncul.
+
+Kalau monitor itu dicabut, posisi tersimpannya tidak cocok lagi dengan monitor mana pun, dan notch kembali ke tengah layar jendela utama — bukan tertinggal di koordinat yang sudah tidak ada.
+
+### Panel
+
+Tombol **⋯** (atau **⌄** saat menganggur) membuka panel: daftar semua yang sedang berjalan, dijeda, dan mengantre, lengkap dengan progres masing-masing. Tombol **⧉** di dalamnya membawa jendela utama ke depan, dan **✕** menutup panelnya lagi.
+
+Tombol **jeda** di notch menjeda **semua** yang sedang berjalan sekaligus, sama seperti *Jeda Semua* di jendela utama.
+
+### Dua hal yang perlu disadari
+
+Notch tidak muncul di taskbar maupun Alt-Tab — ia bacaan, bukan jendela yang kamu tuju.
+
+Jendelanya **menelan klik** yang mengenainya. Ia duduk persis di tempat deretan tab browser, jadi secara bawaan ia hanya ada di layar selagi ada download. Kalau kamu ingin ia selalu tampak supaya bisa digeser kapan saja, nyalakan **Settings → Notch & Notifikasi → Biarkan tetap tampak saat menganggur** — dan ingat harga itu.
+
+Notch memakai tema dan warna aksen yang sama dengan jendela utama — termasuk "Ikuti Sistem". Atur di **Settings → Tampilan**.
+
+Matikan sepenuhnya lewat **Settings → Notch & Notifikasi**.
 
 ---
 
@@ -251,7 +295,7 @@ Yang perlu diketahui:
 
 - Satu isi clipboard hanya ditawarkan **sekali**.
 - Link yang sudah ada di daftar job tidak ditawarkan sama sekali.
-- Pemantauan **dijeda selama form New Download terbuka**, supaya link yang kamu paste sendiri ke form itu tidak kembali muncul sebagai tawaran.
+- Pemantauan **dijeda selama form Tambah Download terbuka**, supaya link yang kamu paste sendiri ke form itu tidak kembali muncul sebagai tawaran.
 - Saat monitor baru dinyalakan, bacaan pertama hanya dipakai sebagai baseline — apa pun yang sudah lebih dulu ada di clipboard tidak langsung nongol.
 
 > **Kenapa default-nya mati.** Clipboard tidak punya event "berubah", jadi satu-satunya cara adalah membacanya berkala (tiap 1,5 detik) — dan itu berarti **semua** isi clipboard terbaca, termasuk password yang kebetulan sedang kamu copy. Yang dilakukan aplikasi: teks dibaca, dicek apakah URL http(s), kalau bukan langsung dibuang dari memori. Tidak ditulis ke disk, tidak dikirim ke jaringan, tidak di-log. Tetap saja, karena ini keputusan privasi dan bukan keputusan teknis, fitur ini harus kamu nyalakan sendiri.
@@ -275,6 +319,23 @@ Tiga cara mengirim link:
 Menu klik-kanan hanya muncul di atas link dan media, bukan di area kosong halaman. Tombol "Download" di banyak situs bukan link (ia men-submit form), jadi tidak ada yang bisa diklik-kanan di sana — untuk kasus itu pakai ambil-alih otomatis, atau salin URL finalnya dari `chrome://downloads` (klik kanan nama file → **Copy link address**) lalu tempel di popup.
 
 Hasilnya muncul sebagai badge kecil di ikon extension: ✓ hijau kalau diterima, ! merah kalau tidak, dengan alasannya di tooltip.
+
+### Dialog konfirmasi
+
+Kalau **Ambil Alih Download Browser** aktif, unduhan yang tertangkap tidak langsung berpindah. Browser dijeda dulu, lalu popup extension terbuka sendiri di bawah ikonnya di toolbar, berisi nama berkas, ukuran, dan alamat asalnya, dengan dua tombol:
+
+| Tombol | Akibatnya |
+| --- | --- |
+| **Unduh dengan Engine** | unduhan browser dibatalkan, job-nya pindah ke Download Engine |
+| **Biarkan Browser** | jeda dilepas, browser melanjutkan seperti tidak terjadi apa-apa |
+
+Enter memilih yang pertama, Esc yang kedua. Mengklik di luar popup tanpa memilih sama saja dengan menekan *Biarkan Browser* — tidak ada unduhan yang hilang karena kamu mengabaikan pertanyaannya.
+
+Kalau dua download mulai berbarengan, pertanyaannya diajukan bergantian: yang kedua tetap terjeda sampai yang pertama dijawab.
+
+Centang **Jangan tanya lagi** di dialog itu, atau matikan **Tanya Dulu** di popup extension, kalau kamu ingin semua unduhan langsung berpindah. Konsekuensinya: baris unduhan di browser akan hilang begitu saja tanpa pemberitahuan apa pun.
+
+Berkas yang sangat kecil kadang sudah selesai sebelum sempat dijeda. Itu dibiarkan di browser — berkas yang sudah ada di tanganmu tidak dibatalkan hanya supaya bisa diunduh ulang.
 
 Job dari browser masuk **antrian** seperti yang kamu tambahkan sendiri — scheduler aplikasi yang menentukan kapan mulai, menghormati batas Concurrency.
 
@@ -356,7 +417,7 @@ Daftar lengkap plus cara memakainya sebagai library Rust ada di [download_engine
 | Notifikasi tidak muncul | izin notifikasi Windows ditolak | aktifkan di Windows Settings → Notifications |
 | Tombol **Buka Folder** nonaktif | job masih *Queued*, filenya belum dibuat | jalankan dulu job-nya |
 | Pilihan hilang sendiri saat filter diubah | disengaja — pilihan dijaga hanya berisi baris yang terlihat | pilih ulang setelah filternya pas |
-| Menarik file ke jendela ditolak | handler drag-drop OS dimatikan supaya drag link bisa jalan | pakai **New Download**; drag hanya untuk link |
+| Menarik file ke jendela ditolak | handler drag-drop OS dimatikan supaya drag link bisa jalan | pakai **Tambah Download**; drag hanya untuk link |
 | Extension tidak muncul di menu klik-kanan | yang diklik area kosong atau sebuah tombol, bukan link | pakai popup extension atau ambil-alih otomatis |
 | Job dari extension gagal setelah aplikasi restart | cookie sesi memang tidak disimpan ke disk | kirim ulang linknya dari browser |
 

@@ -13,6 +13,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 
 mod bridge;
+mod island;
 mod persistence;
 
 #[derive(Clone, Serialize)]
@@ -376,7 +377,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        // The overlay is parked by `island::place`, so the plugin must not
+        // restore a position for it — the two would fight on every start.
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .skip_initial_state(island::LABEL)
+                .build(),
+        )
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             app.manage(EngineState::default());
@@ -384,6 +391,7 @@ pub fn run() {
             // and asks for it; this only makes the state available.
             app.manage(bridge::BridgeState::default());
             setup_tray(app.handle())?;
+            island::setup(app.handle())?;
             Ok(())
         })
         // Closing the window parks the app in the tray so downloads keep
@@ -409,6 +417,11 @@ pub fn run() {
             set_global_speed_limit,
             set_user_agent,
             quit_app,
+            island::island_update,
+            island::island_drag,
+            island::island_drag_end,
+            island::island_action,
+            island::island_reveal_main,
             bridge::bridge_info,
             bridge::set_bridge_enabled,
             persistence::load_app_state,

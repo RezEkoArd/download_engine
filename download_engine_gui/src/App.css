@@ -70,3 +70,401 @@ body {
 .chunk-active {
   animation: pulse-chunk 1.5s infinite ease-in-out;
 }
+
+/*
+ * Accent palettes.
+ *
+ * Tailwind v4 compiles `bg-brand-600` to `background-color: var(--color-brand-600)`,
+ * so redefining those variables here repaints every brand-coloured thing in
+ * the app at once — including the notch, which shares this stylesheet. That is
+ * why the accent is a token swap and not a set of conditional class names:
+ * there are several hundred `brand-*` classes across the UI, and none of them
+ * has to know an accent picker exists.
+ *
+ * `:root[data-accent=…]` outranks the bare `:root` Tailwind emits, so the
+ * blue in `@theme` above stays the default and needs no block of its own.
+ */
+:root[data-accent="teal"] {
+  --color-brand-50: #f0fdfa;
+  --color-brand-100: #ccfbf1;
+  --color-brand-400: #2dd4bf;
+  --color-brand-500: #14b8a6;
+  --color-brand-600: #0d9488;
+  --color-brand-700: #0f766e;
+  --color-brand-800: #115e59;
+  --color-brand-900: #134e4a;
+}
+
+:root[data-accent="purple"] {
+  --color-brand-50: #faf5ff;
+  --color-brand-100: #f3e8ff;
+  --color-brand-400: #c084fc;
+  --color-brand-500: #a855f7;
+  --color-brand-600: #9333ea;
+  --color-brand-700: #7e22ce;
+  --color-brand-800: #6b21a8;
+  --color-brand-900: #581c87;
+}
+
+:root[data-accent="orange"] {
+  --color-brand-50: #fff7ed;
+  --color-brand-100: #ffedd5;
+  --color-brand-400: #fb923c;
+  --color-brand-500: #f97316;
+  --color-brand-600: #ea580c;
+  --color-brand-700: #c2410c;
+  --color-brand-800: #9a3412;
+  --color-brand-900: #7c2d12;
+}
+
+/*
+ * The notch — the always-on-top strip stuck to the top edge of the screen.
+ *
+ * Its Tauri window is transparent and undecorated, so the page itself must not
+ * paint a background: the shape below is the only thing meant to be visible,
+ * and anything opaque here would show up as a grey rectangle around it. There
+ * is no padding either — the notch is flush with the screen edge, and a gap
+ * would read as a floating panel someone mispositioned.
+ */
+.island-body {
+  background: transparent;
+  margin: 0;
+  overflow: hidden;
+  height: 100vh;
+}
+
+.island-body #root {
+  height: 100%;
+}
+
+/*
+ * Colours as tokens, so the notch follows the app's theme and accent rather
+ * than carrying a second palette that drifts from it. The window is a separate
+ * webview with no state of its own, so the theme arrives with the figures and
+ * is applied to its root element — see `Island.tsx`.
+ */
+.notch {
+  --notch-bg: #ffffff;
+  --notch-fg: #111827;
+  --notch-muted: #6b7280;
+  --notch-line: rgba(0, 0, 0, 0.1);
+  --notch-hover: rgba(0, 0, 0, 0.05);
+  --notch-hover-strong: rgba(0, 0, 0, 0.1);
+  --notch-inset: rgba(0, 0, 0, 0.05);
+  --notch-grip: rgba(0, 0, 0, 0.35);
+  --notch-accent: var(--color-brand-500);
+  --notch-accent-text: var(--color-brand-600);
+  --notch-ok: #059669;
+  --notch-wing: 16px;
+
+  position: relative;
+  height: 100%;
+  /* Leaves room for the fillets, which hang outside the body on both sides.
+     The Rust side already adds the same amount to the window width. */
+  margin: 0 var(--notch-wing);
+  background: var(--notch-bg);
+  border-radius: 0 0 20px 20px;
+  color: var(--notch-fg);
+  font-size: 12px;
+  cursor: grab;
+}
+
+.dark .notch {
+  --notch-bg: #121417;
+  --notch-fg: #e8eaed;
+  --notch-muted: #9aa0a6;
+  --notch-line: rgba(255, 255, 255, 0.12);
+  --notch-hover: rgba(255, 255, 255, 0.06);
+  --notch-hover-strong: rgba(255, 255, 255, 0.13);
+  --notch-inset: rgba(255, 255, 255, 0.04);
+  --notch-grip: rgba(255, 255, 255, 0.45);
+  --notch-accent-text: var(--color-brand-400);
+  --notch-ok: #34d399;
+}
+
+.notch:active {
+  cursor: grabbing;
+}
+
+/*
+ * The concave fillets that blend the notch into the top edge.
+ *
+ * Each is a square beside the body holding everything *outside* a circle
+ * centred on its far bottom corner — so the shape is full height where it
+ * meets the body and tapers to nothing at the screen edge. The half-pixel
+ * offset on the colour stop keeps the arc from aliasing into a hard step.
+ */
+.notch::before,
+.notch::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: var(--notch-wing);
+  height: var(--notch-wing);
+  pointer-events: none;
+}
+
+.notch::before {
+  left: calc(-1 * var(--notch-wing));
+  background: radial-gradient(
+    circle at 0 100%,
+    transparent var(--notch-wing),
+    var(--notch-bg) calc(var(--notch-wing) + 0.5px)
+  );
+}
+
+.notch::after {
+  right: calc(-1 * var(--notch-wing));
+  background: radial-gradient(
+    circle at 100% 100%,
+    transparent var(--notch-wing),
+    var(--notch-bg) calc(var(--notch-wing) + 0.5px)
+  );
+}
+
+/* The grab affordance: the dotted pad at the top centre. */
+.notch-grip {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 26px;
+  height: 7px;
+  background-image: radial-gradient(circle, var(--notch-grip) 1px, transparent 1px);
+  background-size: 5px 4px;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+
+.notch:hover .notch-grip {
+  opacity: 1;
+}
+
+.notch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 100%;
+  padding: 0 10px 0 8px;
+}
+
+.notch-mark {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--color-brand-600);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.notch-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.notch-spacer {
+  flex: 1;
+}
+
+.notch-title {
+  font-weight: 600;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.notch-sub,
+.notch-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.notch-sub {
+  color: var(--notch-muted);
+  font-size: 11px;
+}
+
+.notch-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.notch-name {
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.notch-more,
+.notch-item-status {
+  flex: none;
+  font-size: 10px;
+  color: var(--notch-muted);
+}
+
+.notch-track {
+  margin-top: 5px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--notch-line);
+  overflow: hidden;
+}
+
+.notch-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--notch-accent);
+  transition: width 0.3s;
+}
+
+.notch-fill.is-done {
+  background: var(--notch-ok);
+}
+
+.notch-figures {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: var(--notch-muted);
+}
+
+.notch-percent {
+  color: var(--notch-accent-text);
+  font-weight: 600;
+}
+
+.notch-dot {
+  opacity: 0.4;
+}
+
+.notch-done {
+  color: var(--notch-ok);
+  font-size: 15px;
+}
+
+.notch-badge {
+  flex: none;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--color-brand-600);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notch-icon-btn,
+.notch-btn {
+  flex: none;
+  cursor: pointer;
+  border: 1px solid var(--notch-line);
+  background: var(--notch-hover);
+  color: var(--notch-fg);
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.notch-icon-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+}
+
+.notch-btn {
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.notch-icon-btn:hover,
+.notch-btn:hover {
+  background: var(--notch-hover-strong);
+}
+
+/* The one saturated thing in the row, so it reads as the action. White on
+   brand-600 is the same pairing every button in the main window uses. */
+.notch-btn-accent,
+.notch-btn-accent:hover {
+  border-color: transparent;
+  color: #fff;
+}
+
+.notch-btn-accent {
+  background: var(--color-brand-600);
+}
+
+.notch-btn-accent:hover {
+  background: var(--color-brand-700);
+}
+
+/* The expanded panel. */
+.notch-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  /* Explicit rather than inherited from Tailwind's reset: the padding below
+     would otherwise add to the 100%, and the panel's footer would be pushed
+     out of a window whose height Rust has already fixed. */
+  box-sizing: border-box;
+  padding: 14px 14px 0;
+}
+
+.notch-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--notch-line);
+}
+
+.notch-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.notch-item {
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: var(--notch-inset);
+}
+
+.notch-empty {
+  margin: auto;
+  color: var(--notch-muted);
+  font-size: 12px;
+}
+
+.notch-panel-foot {
+  border-top: 1px solid var(--notch-line);
+  padding: 9px 0 12px;
+  color: var(--notch-muted);
+  font-size: 11px;
+}

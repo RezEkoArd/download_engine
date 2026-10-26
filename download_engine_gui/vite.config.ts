@@ -20,6 +20,19 @@ export default defineConfig(() => ({
     __APP_VERSION__: JSON.stringify(pkgVersion),
   },
 
+  build: {
+    rollupOptions: {
+      // Two pages, because the always-on-top overlay is a second Tauri window
+      // and Tauri serves it as its own document. Listing `index.html` here too
+      // is required: naming any input replaces Vite's default rather than
+      // adding to it, and leaving it out would build the overlay alone.
+      input: {
+        main: "index.html",
+        island: "island.html",
+      },
+    },
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

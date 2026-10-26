@@ -9,6 +9,16 @@ const TOKEN_HEADER = "x-download-engine-token";
 const MENU_ID = "send-to-download-engine";
 
 /**
+ * Whether an intercepted download is confirmed before being handed over.
+ *
+ * On by default: taking over a download is visible to the user as their
+ * browser's download silently disappearing, and a tool that does that without
+ * asking is indistinguishable from one that is broken. The dialog is how the
+ * hand-over announces itself; "Jangan tanya lagi" turns it off from there.
+ */
+const CONFIRM_DEFAULT = true;
+
+/**
  * Menus created here survive the service worker being shut down and restarted,
  * so this runs on install and update rather than on every worker wake-up —
  * creating it twice throws.
@@ -51,6 +61,105 @@ async function onDownloadCreated(item) {
   // that can never resolve — after cancelling a download that would have worked.
   if (!/^https?:\/\//.test(url)) return;
 
+  // Checked before the dialog, not after: asking about a download that could
+  // never be handed over anyway would be a question with one real answer.
+  const { token } = await chrome.storage.local.get("token");
+  if (!token) return;
+
+  const { confirmIntercept = CONFIRM_DEFAULT } = await chrome.storage.local.get("confirmIntercept");
+  if (confirmIntercept) {
+    await askFirst(item);
+    return;
+  }
+
+  await handOver(item);
+}
+
+/**
+ * Stops the browser's copy and asks before anything is handed over.
+ *
+ * The pause is what makes the question worth asking: without it the browser
+ * would keep writing bytes while the dialog waited, so "Biarkan Browser" would
+ * cost nothing but "Unduh dengan Engine" would already have downloaded part of
+ * the file twice.
+ */
+async function askFirst(item) {
+  try {
+    await chrome.downloads.pause(item.id);
+  } catch {
+    // Small files can finish between `onCreated` and this call, and a finished
+    // download cannot be un-finished. Leaving it alone is the only answer that
+    // doesn't destroy a file the user already has.
+    await record({ url: item.finalUrl || item.url, source: "intercept", cookie: false, status: "too-fast" });
+    return;
+  }
+
+  // Queued rather than shown straight away. Only one action popup can be open
+  // at a time, so two downloads started together would see the second one
+  // replace the first — leaving the first paused with nothing left to answer
+  // it. They are asked one after the other instead.
+  const { queue = [] } = await chrome.storage.session.get("queue");
+  if (!queue.includes(item.id)) {
+    queue.push(item.id);
+    await chrome.storage.session.set({ queue });
+  }
+
+  await showNext();
+}
+
+/**
+ * Opens the question for the next paused download, under the toolbar icon.
+ *
+ * `chrome.action.openPopup` rather than a window of its own: a popup window
+ * comes with an OS title bar and its own minimise and maximise buttons, which
+ * made the dialog look like a second application rather than part of the
+ * extension.
+ */
+async function showNext() {
+  const { asking = null } = await chrome.storage.session.get("asking");
+  if (asking !== null) return; // one at a time
+
+  const { queue = [] } = await chrome.storage.session.get("queue");
+  const next = queue.shift();
+
+  if (next === undefined) {
+    await chrome.storage.session.set({ queue: [] });
+    await restorePopup();
+    return;
+  }
+
+  await chrome.storage.session.set({ queue, asking: next });
+
+  try {
+    await chrome.action.setPopup({ popup: `confirm.html?id=${next}` });
+    await chrome.action.openPopup();
+  } catch {
+    // Chrome refuses when no window is focused, and `openPopup` only exists
+    // from Chrome 127. Either way the question cannot be put, and a download
+    // left paused with nothing on screen to explain it would look like the
+    // extension broke — so the browser gets it back.
+    flash("!", "#f59e0b", "Tidak bisa menampilkan konfirmasi — diunduh browser");
+    await chrome.storage.session.set({ asking: null });
+    await resumeBrowser(next);
+    await showNext();
+  }
+}
+
+/** Puts the toolbar button back to its normal popup. */
+async function restorePopup() {
+  try {
+    await chrome.action.setPopup({ popup: "popup.html" });
+  } catch {
+    // Nothing to restore to if the extension is being torn down.
+  }
+}
+
+/**
+ * Hands the download to the app, and only then stops the browser's copy.
+ */
+async function handOver(item) {
+  const url = item.finalUrl || item.url;
+
   const { token } = await chrome.storage.local.get("token");
   if (!token) return;
 
@@ -73,12 +182,14 @@ async function onDownloadCreated(item) {
     // the whole reason the hand-over happens before the cancel: the other order
     // would make every download started while the app is closed vanish.
     await record({ url, source: "intercept", cookie: Boolean(cookie), status: "unreachable" });
+    await resumeBrowser(item.id);
     return;
   }
 
   if (!response.ok) {
     flash("!", "#dc2626", `Ditolak aplikasi (HTTP ${response.status}) — tetap diunduh browser`);
     await record({ url, source: "intercept", cookie: Boolean(cookie), status: "rejected" });
+    await resumeBrowser(item.id);
     return;
   }
 
@@ -97,6 +208,90 @@ async function onDownloadCreated(item) {
 
   flash("✓", "#16a34a", "Diambil alih Download Engine");
 }
+
+/**
+ * Lets the browser finish what it started.
+ *
+ * Every path that pauses a download has to reach this, including the ones that
+ * fail: a download left paused with the dialog gone is a file the user asked
+ * for that never arrives, and nothing on screen would say why.
+ */
+async function resumeBrowser(downloadId) {
+  try {
+    await chrome.downloads.resume(downloadId);
+  } catch {
+    // Not paused, already finished, or cancelled by the user from the browser's
+    // own download list. All three mean there is nothing left to resume.
+  }
+}
+
+/**
+ * Stops treating a download as unanswered, and says whether it still was.
+ *
+ * Both the decision and the popup closing race to settle the same download —
+ * the popup closes *because* a button was pressed — so whichever gets here
+ * first wins and the other finds `false` and does nothing.
+ *
+ * In `session` rather than `local`: a paused download does not survive the
+ * browser closing, so neither should the note about it.
+ */
+async function claim(downloadId) {
+  const { asking = null } = await chrome.storage.session.get("asking");
+  if (asking !== downloadId) return false;
+  await chrome.storage.session.set({ asking: null });
+  return true;
+}
+
+/**
+ * The popup's answer.
+ *
+ * Runs after the message handler has already claimed the download and replied,
+ * so the popup can close at once. Doing this work first would hold it open for
+ * a network round trip.
+ */
+async function onDecision(downloadId, choice) {
+  if (choice !== "engine") {
+    await resumeBrowser(downloadId);
+    await showNext();
+    return;
+  }
+
+  // Re-read rather than trusting what `onCreated` saw: the filename, size and
+  // final URL are often still being resolved when the dialog opens.
+  let items = [];
+  try {
+    items = await chrome.downloads.search({ id: downloadId });
+  } catch {
+    // Permission revoked while the popup was open.
+  }
+
+  if (items.length) await handOver(items[0]);
+  await showNext();
+}
+
+/**
+ * A dismissed popup is an answer: the browser keeps the download.
+ *
+ * A popup that closes fires no event of its own, so the page holds a port open
+ * for as long as it is on screen and this listener watches for that port
+ * dropping. Clicking outside the popup is the ordinary way to dismiss one, so
+ * this is not an edge case — it is the second most likely outcome.
+ *
+ * Registered at the top level because MV3 only wakes a stopped worker for
+ * listeners attached in the first turn of the event loop.
+ */
+chrome.runtime.onConnect.addListener((port) => {
+  if (!port.name.startsWith("confirm:")) return;
+  const downloadId = Number(port.name.slice("confirm:".length));
+
+  port.onDisconnect.addListener(async () => {
+    // False when a button already settled it: the popup closes right after,
+    // and resuming here would undo the hand-over that just happened.
+    if (!(await claim(downloadId))) return;
+    await resumeBrowser(downloadId);
+    await showNext();
+  });
+});
 
 /**
  * Attached synchronously, and deliberately not behind a permission check.
@@ -224,9 +419,22 @@ async function send(url, pageUrl, source = "menu") {
  * header allowlist, cookie lookup and logging have exactly one implementation.
  */
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.type !== "send-url") return false;
-  send(message.url, undefined, "popup").then(sendResponse);
-  return true; // keeps the channel open for the async reply
+  if (message?.type === "send-url") {
+    send(message.url, undefined, "popup").then(sendResponse);
+    return true; // keeps the channel open for the async reply
+  }
+
+  if (message?.type === "intercept-decision") {
+    // Claimed first so the popup's own closing cannot be mistaken for the user
+    // walking away from the question; the hand-over then runs unwatched.
+    claim(message.id).then((mine) => {
+      sendResponse({ ok: mine });
+      if (mine) void onDecision(message.id, message.choice);
+    });
+    return true;
+  }
+
+  return false;
 });
 
 /** How many hand-overs the log keeps. */

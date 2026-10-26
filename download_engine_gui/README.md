@@ -1,6 +1,6 @@
 # download_engine_gui
 
-Aplikasi desktop untuk [`download_engine`](../download_engine/README.md), dibuat dengan Tauri 2 + React 19 + TypeScript + Tailwind 4. Tampilannya mengikuti gaya IDM: toolbar di atas, filter di kiri, tabel job di tengah.
+Aplikasi desktop untuk [`download_engine`](../download_engine/README.md), dibuat dengan Tauri 2 + React 19 + TypeScript + Tailwind 4. Tampilannya mengikuti gaya IDM: toolbar di atas, filter dan kategori di kiri, tabel job di tengah, statistik di footer.
 
 Engine dipakai sebagai **library Rust**, bukan dengan memanggil CLI-nya. Jadi pause/resume/cancel bekerja langsung di task yang sedang jalan, dan progress per segmen bisa dibaca real-time.
 
@@ -92,7 +92,11 @@ Keputusan yang terlihat sebagai batasan di UI, tapi sebenarnya pertukaran yang d
 
 **Tidak ada aksi "buka file".** Itu butuh izin `opener:allow-open-path`, yang memberi webview kemampuan membuka **sembarang** path dengan aplikasi default-nya — terlalu luas untuk manfaat yang sudah bisa didapat dengan dua klik dari **Buka Folder**.
 
-**Aksi file ada di inspector, bukan di kolom Actions.** Kolom itu sudah menampung sampai enam tombol; menambah tiga lagi membuatnya melebihi lebar kolom.
+**Aksi file ada di inspector, bukan di kolom Aksi.** Kolom itu sudah menampung sampai enam tombol; menambah tiga lagi membuatnya melebihi lebar kolom.
+
+**Tabelnya enam kolom, bukan delapan.** Progress dan status dulu punya kolom sendiri. Progress bar sekarang duduk di bawah nama berkas — di situ ia sudah berpasangan dengan apa yang sedang diunduh — dan lencana status menempati kolom **Sisa waktu** selama job-nya tidak berjalan, karena sisa waktu memang hanya punya angka saat job berjalan. Dua kolom yang hilang itu dipakai untuk memberi nama berkas ruang yang cukup supaya tidak terpotong.
+
+**Footer hanya berisi angka yang bergerak.** Dulu ada tiga label tetap di sana — "Range Request Probe: Active", "Disk Pre-allocation: Enabled", "Engine Mode: Parallel Segmented". Ketiganya tidak pernah berubah isinya, jadi yang tersisa cuma hiasan yang tetap memakan tempat; sekarang baris itu menampilkan kecepatan total, download aktif berbanding slot concurrency, jumlah segmen yang bekerja, dan jumlah baris di daftar.
 
 **Clipboard monitor punya dua saklar.** Permission `clipboard-manager:allow-read-text` ada di capability hanya karena fitur ini. Mencabut baris itu dari `src-tauri/capabilities/default.json` membuat pembacaan clipboard gagal di level Tauri, apa pun isi Settings — toggle di Settings tidak bisa menghidupkannya kembali.
 
@@ -175,3 +179,35 @@ Masalah saat **build**. Gejala saat **memakai** aplikasinya ada di [Kalau ada ya
 ## Setup IDE
 
 [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+
+### Tema dan warna aksen: satu atribut, bukan ratusan kelas
+
+Warna aksen tidak diterapkan dengan kelas kondisional. Tailwind v4 mengompilasi `bg-brand-600` menjadi `background-color: var(--color-brand-600)`, jadi mendefinisikan ulang variabel itu di `:root[data-accent="teal"]` mengecat ulang **semua** yang berwarna brand sekaligus — dan `App.css` juga dipakai jendela notch, jadi notch ikut berganti tanpa tahu ada pemilih aksen. Alternatifnya berarti menyentuh beberapa ratus kelas `brand-*` di seluruh UI.
+
+`:root[data-accent=…]` mengalahkan `:root` polos yang dikeluarkan Tailwind, jadi biru di `@theme` tetap jadi default dan tidak perlu bloknya sendiri.
+
+Tema disimpan sebagai **mode** (`light` / `dark` / `system`), bukan boolean, dan yang dikirim ke notch adalah hasil **resolusinya**. Notch tidak punya setting sendiri; kalau ia bertanya sendiri ke OS, pilihan Terang atau Gelap yang eksplisit akan diabaikan dan ia bisa jadi pucat di atas jendela gelap. `system` juga berarti *tetap* mengikuti: `matchMedia` didengarkan terus, karena Windows berganti tema di tengah hari dan aplikasi yang membaca preferensi sekali saat start akan jadi satu-satunya yang tertinggal.
+
+Berkas state lama menyimpan tema sebagai `dark: boolean` di luar settings. Itu masih dibaca sekali saat restore dan diterjemahkan ke `themeMode`, supaya upgrade tidak diam-diam mengembalikan semua orang ke gelap.
+
+### Notch: kenapa jendelanya diurus dari Rust
+
+Notch adalah jendela Tauri kedua (`island.html`), dan seluruh penanganan jendelanya — ukuran, posisi, tampil, sembunyi — ada di `src-tauri/src/island.rs`, bukan di frontend.
+
+Alasannya ACL. Menggerakkan jendela dari JavaScript berarti memberi webview `core:window:allow-show`, `allow-hide`, `allow-set-position`, dan `allow-set-size`. Capability memang bisa dibatasi ke satu label jendela, tapi command-command itu menerima **label sebagai argumen** — jadi webview yang memegangnya tetap bisa mengarahkannya ke jendela utama. Menyimpan kemampuan itu di Rust membuat satu-satunya jendela yang bisa disentuh adalah notch-nya sendiri.
+
+Capability notch-nya sendiri (`capabilities/island.json`) cuma berisi `core:event:allow-listen` dan `allow-unlisten`. Ia tidak perlu lebih: angkanya datang sebagai event, dan setiap tombolnya memanggil command aplikasi, yang berada di luar ACL.
+
+Angka-angkanya dihitung di jendela utama, bukan di notch. Notch yang menurunkan sendiri progresnya bisa berbeda dengan daftar job di belakangnya, dan dua angka berbeda untuk satu download lebih buruk daripada tidak ada notch sama sekali. Hal yang sama berlaku untuk **mode**-nya: mode menentukan ukuran *jendela*, dan hanya Rust yang bisa mengubah itu — membalik flag lokal akan menggambar panel 400px di dalam jendela 56px.
+
+Pengirimannya di-throttle 250 ms — event progres datang jauh lebih cepat daripada yang bisa dibaca mata — tapi apa pun yang mengubah **bentuk** notch (mode, fase, berkas yang ditampilkan) selalu dikirim seketika: jendela yang berubah ukuran terlambat seperempat detik terlihat, angka byte yang basi tidak.
+
+Ukuran jendelanya pas dengan bentuk yang digambar, tidak lebih. Jendelanya transparan dan selalu di atas, jadi setiap piksel kelonggaran akan menelan klik yang ditujukan ke apa pun di belakangnya — yaitu deretan tab browser, yang letaknya persis di situ.
+
+Tombol-tombolnya tidak bisa mengerjakan sendiri apa yang mereka minta: menjeda job butuh daftar job, dan membuka folder butuh izin opener — keduanya ada di jendela utama. `island_action` meneruskannya ke sana lewat satu event.
+
+Menggesernya tidak memakai drag loop milik OS. Notch cuma bergerak mendatar di sepanjang tepi atas, dan drag bebas harus di-snap kembali sesudahnya — padahal Tauri tidak punya event "drag selesai" untuk menggantungkan snap itu. Jadi frontend melacak pointer-nya sendiri (dengan pointer capture, supaya event tetap datang saat kursor sudah keluar dari jendela) dan Rust memilih monitor **di bawah kursor**, bukan di bawah jendela — itulah yang membuat menyeret ke layar kedua berhasil.
+
+`tauri_plugin_window_state` disuruh melewati label `island` (`skip_initial_state`). Posisi notch disimpan sendiri di `island-spot.json` sebagai titik tengah relatif terhadap origin monitornya — titik tengah, bukan tepi kiri, supaya ia tidak bergeser saat ganti mode mengubah lebarnya.
+
+Vite membangun dua halaman. Menyebut satu input di `build.rollupOptions.input` **menggantikan** default Vite, bukan menambahnya — jadi `index.html` harus ikut disebut, kalau tidak hanya overlay-nya yang terbangun.

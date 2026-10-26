@@ -49,6 +49,25 @@ export interface NewJobInput {
   forceStart: boolean;
 }
 
+export type ThemeMode = "light" | "dark" | "system";
+
+export type AccentName = "blue" | "teal" | "purple" | "orange";
+
+/**
+ * The accent choices, with the swatch each one shows in Settings.
+ *
+ * The swatch is `brand-500` of that palette — the same value the CSS sets — so
+ * the dot in the picker is literally the colour being picked. Keeping the two
+ * in one place is what stops them drifting apart; see the `[data-accent]`
+ * blocks in `App.css`.
+ */
+export const ACCENTS: ReadonlyArray<{ value: AccentName; label: string; swatch: string }> = [
+  { value: "blue", label: "Biru", swatch: "#3b82f6" },
+  { value: "teal", label: "Teal", swatch: "#14b8a6" },
+  { value: "purple", label: "Ungu", swatch: "#a855f7" },
+  { value: "orange", label: "Oranye", swatch: "#f97316" },
+];
+
 export interface AppSettings {
   defaultSegments: number;
   defaultLimit: string;
@@ -60,6 +79,25 @@ export interface AppSettings {
   clipboardMonitor: boolean;
   /** Listen for links from the browser extension. Off by default: it opens a port. */
   browserBridge: boolean;
+  /**
+   * Show the always-on-top progress overlay while something is downloading.
+   * On by default: it only appears when there is progress to report, and
+   * disappears on its own.
+   */
+  /**
+   * Light, dark, or whatever the OS is set to. The notch is sent the
+   * *resolved* answer rather than this, because it has no business asking the
+   * OS a second time and getting a different one.
+   */
+  themeMode: ThemeMode;
+  accent: AccentName;
+  dynamicIsland: boolean;
+  /**
+   * Keep the notch on screen even with nothing running, so it can be grabbed
+   * and moved at any time. Off by default: it sits exactly where a browser
+   * puts its tab strip, and the window swallows the clicks under it.
+   */
+  notchAlwaysVisible: boolean;
 }
 
 /** Where the browser extension should connect, and the token it must present. */
@@ -115,3 +153,43 @@ export const SPEED_LIMIT_OPTIONS = [
   { value: "2MB", label: "2 MB/s" },
   { value: "10MB", label: "10 MB/s" },
 ] as const;
+
+/**
+ * How much of the notch is on screen. Rust turns this into a window size, so
+ * it is the mode — not a CSS class — that decides how much room the panel has.
+ */
+export type IslandMode = "compact" | "active" | "expanded";
+
+export type IslandPhase = "idle" | "downloading" | "done";
+
+/**
+ * What the notch shows. Mirrors `IslandState` in `src-tauri/src/island.rs`,
+ * which forwards it to the notch window — `snake_case` because it crosses that
+ * boundary as-is.
+ */
+export interface IslandState {
+  mode: IslandMode;
+  phase: IslandPhase;
+  /** Already resolved — "system" never reaches the notch. */
+  theme: "light" | "dark";
+  accent: AccentName;
+  name: string;
+  percent: number;
+  speed_bytes: number;
+  downloaded_bytes: number;
+  total_bytes: number;
+  /** Time left, already formatted. Empty when it cannot be worked out. */
+  eta: string;
+  /** Jobs downloading right now, the one being shown included. */
+  active_count: number;
+  /** Only filled in for `expanded`; the other modes have nowhere to show it. */
+  items: IslandItem[];
+}
+
+export interface IslandItem {
+  id: string;
+  name: string;
+  percent: number;
+  speed_bytes: number;
+  status: JobStatus;
+}

@@ -220,12 +220,31 @@ function bindPermissionToggle(checkbox, request, refresh) {
 bindPermissionToggle(cookiesCheckbox, { permissions: ["cookies"], origins: ["<all_urls>"] }, refreshCookieState);
 bindPermissionToggle(interceptCheckbox, { permissions: ["downloads"] }, refreshInterceptState);
 
+/**
+ * A stored preference, not a permission — so unlike the two above it is read
+ * from and written to storage rather than reflecting what Chrome holds. The
+ * default has to be repeated here because `storage.local` has no entry until
+ * the first time it is changed; background.js owns the same default.
+ */
+const confirmCheckbox = $("confirmIntercept");
+
+async function refreshConfirmState() {
+  const { confirmIntercept = true } = await chrome.storage.local.get("confirmIntercept");
+  confirmCheckbox.checked = confirmIntercept;
+}
+
+confirmCheckbox.addEventListener("change", async () => {
+  await chrome.storage.local.set({ confirmIntercept: confirmCheckbox.checked });
+  showToast(confirmCheckbox.checked ? "Akan ditanya dulu tiap unduhan" : "Unduhan diambil alih tanpa bertanya", true);
+});
+
 /* ---------- log ---------- */
 
 const STATUS_VIEW = {
   sent: ["ok", "Terkirim ke Engine"],
   rejected: ["bad", "Ditolak aplikasi"],
   unreachable: ["bad", "Aplikasi tidak merespons"],
+  "too-fast": ["none", "Selesai sebelum sempat dijeda"],
 };
 
 const SOURCE_VIEW = {
@@ -284,7 +303,7 @@ async function init() {
   $("versionPill").textContent = `Chrome Extension v${chrome.runtime.getManifest().version}`;
   await loadTheme();
   await loadToken();
-  await Promise.all([refreshCookieState(), refreshInterceptState(), refreshConnection(), renderLog()]);
+  await Promise.all([refreshCookieState(), refreshInterceptState(), refreshConfirmState(), refreshConnection(), renderLog()]);
 }
 
 void init();

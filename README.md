@@ -176,6 +176,7 @@ browser-extension/            # extension Chrome (MV3)
 - [x] Daftar job, setting, dan posisi window tersimpan antar sesi
 - [x] Notifikasi sistem saat download selesai/gagal
 - [x] System tray (close ke tray, download tetap jalan)
+- [x] Notch — strip progres selalu-di-atas di tepi atas layar, bisa digeser antar-monitor, muncul hanya saat ada download
 - [x] Aksi buka folder / copy link per job
 - [x] Multi-select job (bulk pause/cancel/retry)
 - [x] Drag-and-drop URL ke window
@@ -186,3 +187,4 @@ browser-extension/            # extension Chrome (MV3)
 - [x] HTTP listener localhost + pairing token (opt-in, `127.0.0.1:47283`)
 - [x] Extension Chrome: menu klik-kanan "Download with Download Engine"
 - [x] Extension mengambil alih download browser (opt-in, izin `downloads`) — menangkap URL final setelah redirect, yang tidak bisa didapat dari klik-kanan
+- [x] Dialog konfirmasi sebelum mengambil alih — download browser dijeda dulu, bukan dibatalkan diam-diam

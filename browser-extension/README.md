@@ -67,6 +67,23 @@ Yang tidak diambil alih:
 
 - URL non-`http(s)` — `blob:`, `data:`, `filesystem:`. URL itu hanya hidup di dalam memori browser, jadi mengirimkannya hanya akan membuat job yang tidak pernah bisa selesai setelah membatalkan download yang tadinya baik-baik saja.
 - Apa pun, kalau token belum diisi.
+- Berkas yang selesai sebelum sempat dijeda. Download kecil bisa rampung di antara `onCreated` dan `downloads.pause`, dan yang sudah selesai tidak bisa dibatalkan tanpa menghapus berkas yang sudah ada di tangan pengguna. Tercatat di log sebagai `too-fast`.
+
+### Dialog konfirmasi
+
+Secara bawaan, unduhan yang tertangkap **dijeda dulu** dan popup extension terbuka sendiri di bawah ikon toolbar: nama berkas, ukuran, asal, dan dua tombol — *Unduh dengan Engine* atau *Biarkan Browser*. Enter memilih yang pertama, Esc yang kedua.
+
+Jedanya yang membuat pertanyaan itu ada artinya. Tanpa menjeda, browser tetap menulis byte selagi dialog menunggu, jadi "Biarkan Browser" gratis sementara "Unduh dengan Engine" berarti sebagian berkas sudah terunduh dua kali.
+
+Dipakai `chrome.action.openPopup()`, bukan overlay di halaman dan bukan jendela tersendiri. Overlay menuntut izin `scripting` plus akses ke semua situs — sama besarnya dengan apa yang susah payah dihindari extension ini — dan unduhan yang dimulai dari tab yang langsung menutup diri tidak menyisakan halaman untuk disuntiki. Jendela tersendiri datang dengan bilah judul OS berikut tombol minimize dan maximize, yang membuatnya tampak seperti aplikasi kedua.
+
+Hanya satu popup yang bisa terbuka sekaligus, jadi download yang datang berbarengan diantrikan dan ditanyakan satu per satu. Tanpa antrian, yang kedua akan menggantikan yang pertama dan meninggalkannya terjeda tanpa ada lagi yang menjawabnya.
+
+Popup yang tertutup tidak memancarkan event apa pun, jadi halamannya membuka sebuah port selama ia tampil dan service worker mengawasi port itu terputus. Mengklik di luar popup adalah cara biasa menutupnya — ini bukan kasus pinggiran, melainkan kemungkinan kedua terbesar.
+
+Menutup popup itu tanpa memilih sama dengan memilih browser: unduhannya dilanjutkan. Begitu pula kalau popup-nya gagal dibuka (Chrome menolak saat tidak ada jendela yang fokus, dan `openPopup` baru ada sejak Chrome 127), aplikasi tidak merespons, atau token ditolak — setiap jalur yang menjeda berakhir di `resume`, karena unduhan yang ditinggal terjeja tanpa penjelasan di layar adalah berkas yang diminta pengguna tapi tidak pernah datang.
+
+Matikan lewat **Tanya Dulu** di halaman opsi atau popup, atau centang "Jangan tanya lagi" di dialognya. Mematikannya berarti baris unduhan di browser hilang begitu saja tanpa pemberitahuan — itu sebabnya bawaannya menyala.
 
 Perlu diketahui: izin ini memperlihatkan **seluruh** aktivitas download-mu ke extension, dan "Save page as" pun ikut terambil alih. Kalau menu klik-kanan sudah cukup, biarkan mati. Izin bisa dicabut kapan saja, dan listener-nya ikut dilepas begitu itu terjadi.
 

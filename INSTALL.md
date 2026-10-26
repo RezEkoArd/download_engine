@@ -101,6 +101,8 @@ Keduanya mati secara default dan diminta hanya saat kamu menyalakannya sendiri.
 
 **Ambil Alih Download Browser** — setiap unduhan yang dimulai browser diteruskan ke Download Engine lalu dibatalkan di browser. Ini satu-satunya cara menangani tombol unduh yang men-submit form dan halaman perantara, karena URL finalnya baru diketahui setelah browser menelusuri semua pengalihan. Izin `downloads` memperlihatkan seluruh aktivitas unduhanmu ke extension.
 
+Secara bawaan unduhannya **dijeda dulu** dan popup extension terbuka di bawah ikon toolbar dan bertanya mau diserahkan ke Download Engine atau dibiarkan di browser. Matikan lewat **Tanya Dulu** kalau kamu ingin semuanya langsung berpindah tanpa ditanya.
+
 > Kalau toggle dicentang tapi statusnya tetap "tidak disentuh", **reload extension** di `chrome://extensions` (tombol ↻). Chrome membaca HTML dan JS dari disk setiap kali, tapi `manifest.json` hanya saat dimuat — jadi toggle baru bisa muncul sebelum izinnya terdaftar.
 
 ---
@@ -119,7 +121,7 @@ Ringkasnya di bawah. Panduan lengkapnya — semua field di form, aksi per job, a
 
 - **Klik kanan** sebuah link, video, audio, atau gambar → **Download with Download Engine**.
 - Klik ikon extension → tempel URL di **Kirim Link Manual**.
-- Dengan "Ambil Alih Download Browser" aktif: unduh seperti biasa, job-nya pindah sendiri.
+- Dengan "Ambil Alih Download Browser" aktif: unduh seperti biasa, lalu jawab dialog yang muncul — *Unduh dengan Engine* atau *Biarkan Browser*.
 
 Menu klik-kanan hanya muncul di atas link dan media — bukan di area kosong halaman. Tombol "Download" di banyak situs bukan link (ia men-submit form), jadi tidak ada yang bisa diklik-kanan di sana. Untuk kasus itu pakai ambil-alih otomatis, atau salin URL finalnya dari `chrome://downloads` (klik kanan nama file → **Copy link address**) lalu tempel di popup.
 

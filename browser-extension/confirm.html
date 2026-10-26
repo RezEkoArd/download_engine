@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <title>Unduhan Terdeteksi</title>
+    <link rel="stylesheet" href="ui.css" />
+  </head>
+  <body class="confirm">
+    <svg hidden xmlns="http://www.w3.org/2000/svg">
+      <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12L13 2Z" /></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M11 3h2v8h4l-5 6-5-6h4V3Zm-7 16h16v2H4v-2Z" /></symbol>
+      <symbol id="i-browser" viewBox="0 0 24 24"><path d="M3 4h18v16H3V4Zm2 4v10h14V8H5Zm1-3.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm3 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" /></symbol>
+    </svg>
+
+    <div class="confirm-head">
+      <span class="mark"><svg class="icon"><use href="#i-bolt" /></svg></span>
+      <span>Unduhan Terdeteksi</span>
+    </div>
+
+    <div class="confirm-body">
+      <div class="confirm-file">
+        <div class="name mono" id="name" title="">memuat…</div>
+        <div class="meta">
+          <span id="size">ukuran belum diketahui</span>
+          <span class="sep">·</span>
+          <span id="host">—</span>
+        </div>
+      </div>
+
+      <div class="confirm-url mono" id="url" title=""></div>
+
+      <div class="confirm-actions">
+        <button class="btn btn-primary" id="engine"><svg class="icon"><use href="#i-download" /></svg> Unduh dengan Engine</button>
+        <button class="btn" id="browser"><svg class="icon"><use href="#i-browser" /></svg> Biarkan Browser</button>
+      </div>
+
+      <label class="confirm-remember">
+        <input type="checkbox" id="dontAsk" />
+        <span>Jangan tanya lagi — langsung ambil alih</span>
+      </label>
+
+      <div id="status"></div>
+    </div>
+
+    <script src="confirm.js"></script>
+  </body>
+</html>

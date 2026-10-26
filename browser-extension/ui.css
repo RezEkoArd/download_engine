@@ -19,11 +19,26 @@
   --fg-2: #374151;
   --muted: #6b7280;
   --muted-2: #9ca3af;
+  /*
+   * Two accents, each with one job.
+   *
+   * `--brand` is the app's blue, and it is only ever the logo chip — the thing
+   * that says which application this is. `--accent` is the teal every action
+   * uses. Keeping them apart is what stops the identity mark from reading as a
+   * button: before this split, the header *was* a giant blue bar, and the one
+   * blue square inside it was the only thing that wasn't clickable.
+   */
   --brand: #2563eb;
   --brand-hover: #1d4ed8;
   --brand-fg: #2563eb;
   --brand-soft: rgba(37, 99, 235, 0.1);
   --brand-line: rgba(37, 99, 235, 0.2);
+  --accent: #14b8a6;
+  --accent-hover: #0d9488;
+  --accent-fg: #0f766e;
+  /* Text that sits *on* the accent. Teal is a light colour, so white on it
+     fails contrast at this text size where white on blue passed. */
+  --accent-contrast: #052e2b;
   --ok: #10b981;
   --ok-fg: #059669;
   --ok-soft: rgba(16, 185, 129, 0.1);
@@ -39,23 +54,32 @@
 
 html.dark {
   color-scheme: dark;
-  --bg: #0f172a;
-  --surface: #1e293b;
-  --surface-2: #334155;
-  --inset: rgba(15, 23, 42, 0.6);
-  --line: rgba(51, 65, 85, 0.8);
-  --line-soft: rgba(51, 65, 85, 0.6);
-  --fg: #ffffff;
-  --fg-2: #d1d5db;
-  --muted: #9ca3af;
+  /*
+   * Neutral near-black rather than the slate-blue it used to be. The toolbar
+   * popup is painted right under Chrome's own chrome, and a blue-tinted panel
+   * there reads as a mis-set theme rather than a deliberate one.
+   */
+  --bg: #0d0f11;
+  --surface: #17191c;
+  --surface-2: #212429;
+  --inset: #101215;
+  --line: #2a2e34;
+  --line-soft: #23262b;
+  --fg: #f1f3f5;
+  --fg-2: #d6d9dd;
+  --muted: #9aa0a6;
   --muted-2: #6b7280;
   --brand: #2563eb;
   --brand-hover: #1d4ed8;
   --brand-fg: #60a5fa;
+  --accent: #2de0c8;
+  --accent-hover: #4fe9d5;
+  --accent-fg: #2de0c8;
+  --accent-contrast: #06201c;
   --ok-fg: #34d399;
   --warn-fg: #fbbf24;
   --bad: #f87171;
-  --track: #374151;
+  --track: #343840;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
@@ -257,13 +281,13 @@ button {
 }
 
 .btn-primary {
-  background: var(--brand);
-  border-color: var(--brand);
-  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
 }
 
 .btn-primary:hover {
-  background: var(--brand-hover);
+  background: var(--accent-hover);
 }
 
 .btn-icon {
@@ -347,8 +371,8 @@ button {
 }
 
 .tab-btn[aria-selected="true"] {
-  background: var(--brand);
-  color: #fff;
+  background: var(--accent);
+  color: var(--accent-contrast);
   font-weight: 600;
   box-shadow: var(--shadow);
 }
@@ -572,7 +596,7 @@ input:focus-visible {
 }
 
 .switch input:checked + .slider {
-  background: var(--brand);
+  background: var(--accent);
 }
 
 .switch input:checked + .slider::after {
@@ -767,26 +791,46 @@ body.popup {
   background: var(--surface);
 }
 
-.popup-head {
-  background: var(--brand);
-  color: #fff;
-  padding: 14px;
+/*
+ * The header is the surface, not a coloured band.
+ *
+ * A full-width brand bar is the loudest thing on a 320px panel, and it was
+ * competing with the one control the panel exists for. Reducing it to a logo
+ * chip and a line of text leaves the teal button as the only saturated thing
+ * on screen — which is what makes it read as the action.
+ */
+.popup-head,
+.confirm-head {
+  background: var(--surface);
+  color: var(--fg);
+  padding: 14px 16px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 14px;
+  border-bottom: 1px solid var(--line-soft);
+  flex: none;
 }
 
-.popup-head .mark {
-  width: 24px;
-  height: 24px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.2);
+.popup-head .mark,
+.confirm-head .mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--brand);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 15px;
+  flex: none;
+}
+
+.popup-head .icon,
+.confirm-head .icon {
+  width: 1em;
+  height: 1em;
 }
 
 .popup-body {
@@ -830,4 +874,103 @@ body.popup {
   padding-top: 12px;
   border-top: 1px solid var(--line-soft);
   text-align: center;
+}
+
+/* ---------- konfirmasi intersepsi ---------- */
+
+/*
+ * The action popup, under the toolbar icon — not an overlay on the page and
+ * not a window of its own. An overlay would cost `scripting` plus host access
+ * to every site, and a window of its own arrives with an OS title bar and
+ * minimise and maximise buttons that make it look like a second application.
+ *
+ * Sized like `body.popup`: Chrome sizes an action popup to its content, so the
+ * width is set here and the height follows whatever is inside.
+ */
+body.confirm {
+  width: 340px;
+  background: var(--surface);
+}
+
+.confirm-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 12px;
+}
+
+.confirm-file .name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  /* The filename is the one thing being decided about, so it gets two lines
+     rather than one. Clamped rather than a plain `max-height`, which cut the
+     third line off mid-stroke with nothing to say more had been dropped. */
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.confirm-file .meta {
+  margin-top: 4px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.confirm-file .meta .sep {
+  opacity: 0.5;
+}
+
+.confirm-url {
+  background: var(--inset);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * Stacked, not side by side. At the popup's 340px the two labels would each
+ * get about 150px and wrap mid-phrase; full width also makes the choice read
+ * as two options rather than a button and its afterthought.
+ */
+.confirm-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.confirm-actions .btn {
+  width: 100%;
+  justify-content: center;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.confirm-remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+body.confirm #status {
+  color: var(--muted);
+  font-size: 11px;
+  min-height: 1em;
 }

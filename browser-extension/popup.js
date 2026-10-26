@@ -88,7 +88,16 @@ $("url").addEventListener("keydown", (event) => {
 async function refreshToggles() {
   $("cookies").checked = await chrome.permissions.contains({ permissions: ["cookies"], origins: ["<all_urls>"] });
   $("intercept").checked = await chrome.permissions.contains({ permissions: ["downloads"] });
+  // The odd one out: a stored preference rather than a permission Chrome holds.
+  // Default repeated from background.js, which owns it — storage has no entry
+  // until the switch is first touched.
+  const { confirmIntercept = true } = await chrome.storage.local.get("confirmIntercept");
+  $("confirmIntercept").checked = confirmIntercept;
 }
+
+$("confirmIntercept").addEventListener("change", async () => {
+  await chrome.storage.local.set({ confirmIntercept: $("confirmIntercept").checked });
+});
 
 function bindPermissionToggle(checkbox, request) {
   checkbox.addEventListener("change", async () => {
